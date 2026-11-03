@@ -17,6 +17,7 @@ export { createModelRequests, MODEL_ROUTE, MODEL_LIMITS } from './model.mjs';
 export { createModelExecution } from './model-execution.mjs';
 export { createOwnerModelPreflight } from './model-owner.mjs';
 export { createAdmissionExecution, verifyAdmissionHandoff } from './admission.mjs';
+export { createRepositoryExecution, verifyExecutorHandoff, validateExecutorScope, inspectExecutor } from './executor.mjs';
 // Internal factory adapter building blocks; never expose SDK handles to the app or CLI.
 export { Receipt as executionReceiptDocument, result as readExecutionResult };
 export { createRunTools } from './run-tools.mjs';
@@ -40,7 +41,8 @@ async function result(harness) {
   const identity = { submissionId: receipt.submissionId, runId: receipt.runId, requestId: receipt.requestId,
     ...(receipt.safety ? { safety: receipt.safety } : {}) };
   if (settled.status !== 'done') return { ...identity, status: settled.status, reason: settled.reason };
-  const root = await harness.root(context);
+  const root = receipt.conversationId ? await harness.conversation(receipt.conversationId, context) : await harness.root(context);
+  if (!root) return { ...identity, status: 'missing' };
   const answer = await root.commit((tx) => tx.entry(settled.answer), context);
   const message = answer?.model?.[0];
   if (message?.role !== 'assistant' || message.stopReason !== 'stop') {

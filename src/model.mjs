@@ -1,4 +1,7 @@
 import { FactoryError } from './storage.mjs';
+import { isDeepStrictEqual } from 'node:util';
+import { EXECUTOR_TOOLS, validateExecutorCall } from './executor-policy.mjs';
+import { verifyActivatedAdmission } from './admission.mjs';
 import { cancellableResponse } from './model-transport.mjs';
 import { terminalUsage, modelAccounting, pricedUsage } from './model-accounting.mjs';
 import { isRetryableAssistantError } from '@earendil-works/pi-ai/utils/retry';
@@ -18,8 +21,15 @@ export function modelFailure(reason) {
 /** Factory-owned request seam. The caller supplies Pi's ModelRuntime, never credentials.
  * Construction/imports do not discover auth, load configuration or enable execution.
  */
-export function createModelRequests({ modelRuntime, budget, signal, fetch = globalThis.fetch,
-  clock = { now: Date.now, setTimeout, clearTimeout } }) {
+export function createModelRequests(options) { return boundedRequests(options); }
+
+// Internal factory-owned path. There is no caller-supplied tool allowlist or verifier.
+export async function createExecutorModelRequests({ authority, ...options }) {
+  const activation = await verifyActivatedAdmission(authority);
+  return boundedRequests({ ...options, modelRuntime: activation.modelRuntime }, authority);
+}
+function boundedRequests({ modelRuntime, budget, signal, fetch = globalThis.fetch,
+  clock = { now: Date.now, setTimeout, clearTimeout } }, authority) {
   const lifetime = new AbortController();
   const active = new Set();
   let drainFailure;
@@ -27,6 +37,8 @@ export function createModelRequests({ modelRuntime, budget, signal, fetch = glob
   async function attempt({ generationId, retry = false, smoke = false, messages, sessionId }) {
     if (lifetime.signal.aborted) throw new FactoryError('MODEL_CLOSED', 'Model request ownership has closed.');
     budget.assertActive();
+    if (authority) await verifyActivatedAdmission(authority);
+    const authorized = Boolean(authority) && !smoke;
     const requestedOutputTokens = smoke ? MODEL_LIMITS.smokeOutputTokens : MODEL_LIMITS.outputTokens;
     const requestDeadlineAt = Math.min(budget.deadlineAt, clock.now() + (smoke ? MODEL_LIMITS.smokeMs : MODEL_LIMITS.requestMs));
     const reservation = budget.reserveModelAttempt({ generationId, retry, smoke, requestedOutputTokens, requestDeadlineAt });
@@ -48,12 +60,18 @@ export function createModelRequests({ modelRuntime, budget, signal, fetch = glob
       if (!auth) block('MODEL_AUTH_REQUIRED');
       if (auth.type !== 'api_key') block('MODEL_AUTH_INCOMPATIBLE');
       // Pin effort in the request itself, not Pi's optional mid-conversation configuration items.
-      const boundedModel = { ...model, compat: { ...model.compat, supportsMidConvoEffort: false } };
+      const boundedModel = { ...model, compat: { ...model.compat, supportsMidConvoEffort: false,
+        ...(authorized ? { supportsAdditionalTools: false, supportsToolSearch: false } : {}) } };
       const validatePayload = (payload) => {
         if (!Number.isInteger(payload?.max_output_tokens) || payload.max_output_tokens < 16
           || payload.max_output_tokens > requestedOutputTokens) block('MODEL_AUTH_INCOMPATIBLE');
         if (payload.model !== 'gpt-6.1-sol' || payload.reasoning?.effort !== 'low' || payload.stream !== true
-          || payload.store !== false || payload.background || payload.tools?.length) block('MODEL_PAYLOAD_REJECTED');
+          || payload.store !== false || payload.background || (!authorized && payload.tools?.length)) block('MODEL_PAYLOAD_REJECTED');
+        if (authorized) {
+          const expected = EXECUTOR_TOOLS.map(tool => ({ type: 'function', ...tool, strict: false }));
+          if (!isDeepStrictEqual(payload.tools, expected)
+            || payload.input?.some(item => ['additional_tools', 'tool_search_call', 'custom_tool_call'].includes(item.type))) block('MODEL_PAYLOAD_REJECTED');
+        }
       };
       message = await modelRuntime.completeSimple(boundedModel, { messages }, {
         maxTokens: requestedOutputTokens, reasoning: 'low', maxRetries: 0, transport: 'sse',
@@ -90,7 +108,7 @@ export function createModelRequests({ modelRuntime, budget, signal, fetch = glob
       } else if (message.stopReason === 'length') {
         failure = 'MODEL_OUTPUT_LIMIT';
         message = { ...modelFailure(failure), stopReason: 'length' };
-      } else if (message.stopReason !== 'stop') {
+      } else if (message.stopReason !== 'stop' && !(authorized && message.stopReason === 'toolUse')) {
         failure = 'MODEL_UNEXPECTED_RESPONSE';
         message = modelFailure(failure);
       }
@@ -103,7 +121,16 @@ export function createModelRequests({ modelRuntime, budget, signal, fetch = glob
     // Cancellation/deadline can arrive after the terminal event, during final drainage.
     if (clock.now() >= requestDeadlineAt) failure ??= 'MODEL_REQUEST_DEADLINE';
     if (requestSignal.aborted) failure ??= 'MODEL_CANCELLED';
-    if (failure && message.stopReason === 'stop') message = modelFailure(failure);
+    if (failure && ['stop', 'toolUse'].includes(message.stopReason)) message = modelFailure(failure);
+    if (!failure && authorized) {
+      try {
+        const calls = message.content.filter(block => block.type === 'toolCall');
+        if ((message.stopReason === 'toolUse') !== (calls.length > 0) || calls.length > 30
+          || calls.some(c => typeof c.id !== 'string' || !c.id || c.id.length > 256)
+          || new Set(calls.map(c => c.id.split('|')[0])).size !== calls.length) throw new Error();
+        for (const call of calls) validateExecutorCall(call);
+      } catch { failure = 'EXECUTOR_TOOL_SCHEMA'; message = modelFailure(failure); }
+    }
     if (usage?.output > requestedOutputTokens) {
       failure = 'MODEL_OUTPUT_CAP_VIOLATION';
       message = modelFailure(failure);
@@ -113,7 +140,7 @@ export function createModelRequests({ modelRuntime, budget, signal, fetch = glob
       preflight: smoke && message.stopReason === 'stop', reason });
     if (usage) message.usage = pricedUsage(model, usage);
     budget.settle(reservation.id, `Bounded model attempt ended: ${reason ?? message.stopReason}. No monetary ceiling is guaranteed; local cancellation does not prove provider billing stopped.`, accounting);
-    return { ok: message.stopReason === 'stop', ...(reason ? { reason } : {}),
+    return { ok: message.stopReason === 'stop' || (authorized && message.stopReason === 'toolUse'), ...(reason ? { reason } : {}),
       message, accounting, reservationId: reservation.id, reviewReady: false };
   }
   function tracked(input) {

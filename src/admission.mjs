@@ -13,6 +13,7 @@ import { verifyContainmentEnvelope, ContainmentError } from './containment.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const handoffs = new WeakMap();
+const activations = new WeakMap();
 const instruction = 'Inspect the retained admission/check evidence. Correct prerequisites or baseline failures outside agent execution, explicitly prepare matching dependencies if needed, then start a new run with a new request ID. Never reuse stale smoke or baseline evidence.';
 const fail = (code) => { throw new FactoryError(code, instruction); };
 const isDrain = error => ['DRAIN_FAILED', 'MODEL_DRAIN_FAILED'].includes(error?.code);
@@ -21,10 +22,12 @@ async function profile(run, dependencies, kind) {
   const files = {};
   for (const name of ['admission.mjs', 'run-tools.mjs', 'containment.mjs', 'containment-files.mjs',
     'containment-probe.mjs', 'containment-filter.mjs', 'containment-namespace.mjs', 'dependencies.mjs',
-    'dependencies-files.mjs', 'dependencies-lock.mjs', 'model.mjs', 'model-execution.mjs', 'model-transport.mjs', 'model-accounting.mjs']) {
+    'dependencies-files.mjs', 'dependencies-lock.mjs', 'model.mjs', 'model-execution.mjs', 'model-transport.mjs', 'model-accounting.mjs',
+    'executor.mjs', 'executor-policy.mjs', 'executor-artifacts.mjs', 'executor-model.mjs', 'executor-tools.mjs']) {
     files[name] = hash(await readFile(new URL(name, import.meta.url)));
   }
   return { version: 1, kind, model: MODEL_ROUTE, reasoning: 'low', limits: run.limits,
+    ...(run.executor ? { executorScope: run.executor.scope } : {}),
     checks: ['vitest run --maxWorkers=2 --minWorkers=1', 'eslint . --no-cache'],
     dependencyIntentId: dependencies.intent.id, inventoryDigest: dependencies.receipt.inventoryDigest,
     toolchain: dependencies.intent.toolchain, implementation: files };
@@ -58,9 +61,29 @@ export async function observeAdmission(run, dependencyRun) {
  */
 export async function verifyAdmissionHandoff(token, { runId, kind = 'owner' } = {}) {
   const owner = handoffs.get(token);
-  if (!owner || owner.runId !== runId || owner.kind !== kind) fail('ADMISSION_AUTHORITY_REQUIRED');
+  if (!owner || owner.consumed || owner.runId !== runId || owner.kind !== kind) fail('ADMISSION_AUTHORITY_REQUIRED');
   await owner.verify();
   return Object.freeze({ runId, kind, binding: structuredClone(owner.binding) });
+}
+
+/** Internal executor transition, not a callback/JSON authorization seam. Verify pristine
+ * source first, consume exactly once, then retain policy/dependency/ownership checks.
+ * The executor separately verifies every non-scoped source byte against the baseline.
+ */
+export async function consumeAdmissionHandoff(token, identity) {
+  await verifyAdmissionHandoff(token, identity);
+  const owner = handoffs.get(token);
+  if (owner.consumed) fail('ADMISSION_AUTHORITY_REQUIRED');
+  owner.consumed = true;
+  const authority = Object.freeze({});
+  activations.set(authority, owner.activate());
+  return authority;
+}
+export async function verifyActivatedAdmission(authority) {
+  const activation = activations.get(authority);
+  if (!activation) fail('ADMISSION_AUTHORITY_REQUIRED');
+  await activation.verify();
+  return { ...activation, binding: structuredClone(activation.binding) };
 }
 
 /** Trusted execution seam. Constructor/inspection/recovery do not initialize ModelRuntime.
@@ -76,16 +99,18 @@ export function createAdmissionExecution({ createRuntime, fetch, clock, fixture 
   const kind = fixture ? 'controlled-fixture' : 'owner';
   return Object.freeze({ mode: 'admission-only', model: MODEL_ROUTE, admissionKind: kind,
     async start(input) {
-      const { run, budget, signal, dependencyRun, saveAdmission } = input;
+      const { budget, signal, saveAdmission } = input;
+      const run = structuredClone(input.run);
+      const dependencyRun = structuredClone(input.dependencyRun);
       if (!run.admission || run.admission.kind !== kind || typeof saveAdmission !== 'function') fail('ADMISSION_REQUIRED');
       const shutdown = new AbortController();
       const combined = AbortSignal.any([signal, shutdown.signal]);
       let tools; let model; let closing; let closed = false; let invalid = false; let ready = false;
-      let binding; let dependencyBundle;
+      let binding; let dependencyBundle; let modelRuntime; let activated = false;
       let state = { ...run.admission, status: 'checking', readiness: 'not-ready', baselines: [] };
       const save = patch => { state = { ...state, ...patch }; saveAdmission(structuredClone(state)); };
       const active = () => { budget.assertActive(); if (closed || combined.aborted) fail('RUN_STOPPING'); if (invalid) fail('ADMISSION_INVALIDATED'); };
-      async function capture() {
+      async function capture(draft = false) {
         active();
         await verifyContainmentEnvelope();
         if (!run.workspace?.intent || run.workspace.intent.runId !== run.id
@@ -99,7 +124,7 @@ export function createAdmissionExecution({ createRuntime, fetch, clock, fixture 
         const receipt = await inspectDependencies(deps.intent);
         if (JSON.stringify(receipt) !== JSON.stringify(deps.receipt)) fail('DEPENDENCIES_STALE');
         let sourceDigest;
-        try { sourceDigest = await sourceFingerprint(run.workspace.intent.worktree, run.workspace.intent.sourceManifest); }
+        try { sourceDigest = await sourceFingerprint(run.workspace.intent.worktree, draft ? undefined : run.workspace.intent.sourceManifest); }
         catch { fail('ADMISSION_SOURCE_CHANGED'); }
         const executionProfile = await profile(run, { intent: deps.intent, receipt }, kind);
         active();
@@ -117,6 +142,13 @@ export function createAdmissionExecution({ createRuntime, fetch, clock, fixture 
           catch (reportError) { if (!isDrain(error)) throw reportError; }
           throw error;
         }
+      }
+      async function verifyDraftPolicy() {
+        try {
+          active();
+          const current = await capture(true);
+          if (JSON.stringify({ ...current, sourceDigest: binding.sourceDigest }) !== JSON.stringify(binding)) fail('ADMISSION_INVALIDATED');
+        } catch (error) { invalid = true; throw error; }
       }
       async function drain() {
         const results = await Promise.allSettled([model?.close(), tools?.close()]);
@@ -136,7 +168,6 @@ export function createAdmissionExecution({ createRuntime, fetch, clock, fixture 
           if (budget.modelAttempts().length >= run.limits.modelAttempts) fail('MODEL_ATTEMPT_LIMIT');
           if (budget.modelAttempts().some(attempt => attempt.smoke)) fail('SMOKE_LIMIT');
           save({ stage: 'model-preflight' });
-          let modelRuntime;
           try { modelRuntime = await createRuntime({ modelsPath: null, modelsStore: new InMemoryModelsStore(),
             refreshOnCreate: false, allowModelNetwork: false, signal: combined }); }
           catch { active(); fail('MODEL_INITIALIZATION_FAILED'); }
@@ -177,10 +208,15 @@ export function createAdmissionExecution({ createRuntime, fetch, clock, fixture 
       return Object.freeze({ finished,
         async handoff() {
           await finished;
-          if (!ready) fail('ADMISSION_AUTHORITY_REQUIRED');
+          if (!ready || activated) fail('ADMISSION_AUTHORITY_REQUIRED');
           await verify();
           const token = Object.freeze({});
-          handoffs.set(token, { runId: run.id, kind, binding, verify });
+          handoffs.set(token, { runId: run.id, kind, binding, verify,
+            activate() {
+              if (activated) fail('ADMISSION_AUTHORITY_REQUIRED');
+              activated = true;
+              return { runId: run.id, kind, binding, modelRuntime, dependencyBundle, verify: verifyDraftPolicy };
+            } });
           return token;
         },
         async cancel() { shutdown.abort(); await Promise.allSettled([model?.cancel()]); },
