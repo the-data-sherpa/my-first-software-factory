@@ -29,7 +29,18 @@ export async function serveFactory({ factory, mode = 'production-blocked', fixtu
       try {
         if (request.method === 'GET' && request.url === '/health') return send(response, 200, { storageVersions: factory.storageInfo(), fixture, mode });
         if (request.method === 'GET' && request.url === '/runs') return send(response, 200, await factory.listRuns());
-        if (request.method === 'GET' && /^\/runs\/run_[a-f0-9-]+$/.test(request.url)) return send(response, 200, await factory.inspectRun(request.url.slice('/runs/'.length)));
+        if (request.method === 'GET' && /^\/runs\/run_[a-f0-9-]+(?:\?.*)?$/.test(request.url)) {
+          const url = new URL(request.url, 'http://factory.local');
+          const inspection = {};
+          for (const [key, value] of url.searchParams) {
+            if (!['page', 'offset', 'length'].includes(key) || Object.hasOwn(inspection, key)
+              || !/^(0|[1-9][0-9]*)$/.test(value) || !Number.isSafeInteger(Number(value))) {
+              throw new FactoryError('INVALID_ARGUMENTS', 'Use only bounded executor event pagination.');
+            }
+            inspection[key] = Number(value);
+          }
+          return send(response, 200, await factory.inspectRun(url.pathname.slice('/runs/'.length), inspection));
+        }
         const control = request.url.match(/^\/runs\/(run_[a-f0-9-]+)\/(stop|resume|replace|prepare-dependencies)$/);
         if (request.method === 'POST' && (request.url === '/runs' || control)) {
           const chunks = []; let size = 0;

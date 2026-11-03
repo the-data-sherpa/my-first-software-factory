@@ -300,10 +300,35 @@ Source and execution-profile changes invalidate evidence, and passive inspection
 
 Passing gates records `blocked / EXECUTOR_NOT_IMPLEMENTED`, not maintenance success.
 Repository tools remain disabled, and controlled-fixture receipts cannot authorize the owner profile.
-The future executor must use the live opaque handoff and preserve original ownership and budgets.
+The separate executor must use the live opaque handoff and preserve original ownership and budgets.
 
 Parent review corrected a capability-reporting omission: the enabled owner admission adapter now reports `productionModel: true`, without claiming live provider acceptance. Controlled adapters report false.
 Parent verification passed **223/223**, with no exclusions or skips, plus the **1/1** browser regression.
 Independent review of checkpoint `e355ec6` found no concrete defects or missing ticket #7 acceptance requirements.
 It passed **39/39** admission tests and **2/2** focused boundary regressions, with **39/39** recorded scopes inactive and empty.
 The parent accepted the controlled #7 implementation after that review. Tickets #8–#10 and real model/Vanguard acceptance remain separate work.
+
+### Ticket #8 executor integration checkpoint
+
+[Ticket #8](implementation/ticket-08.md) adds the bounded repository executor and now connects it to the application and CLI.
+The owner selects `serve --execute-agent`, an explicit preparation run, and repeated `start --write-path PATH` file permissions.
+Scope is immutable, normalized before admission, and part of duplicate and linked-replacement identity.
+The real executor consumes the live admission handoff before tool-enabled requests and retains the original budgets.
+The selected model sees only bounded reads, scoped writes, and fixed checks.
+
+The factory synchronously saves executor evidence and its later submission identity.
+CLI inspection exposes paginated events online and offline without a model runtime or scheduler.
+Admission remains historical baseline evidence after draft edits.
+Completed smoke after a crash is not executor completion; interrupted execution never resumes automatically.
+Normal drafts report `draft-produced / QUALIFICATION_REQUIRED`, with `reviewReady: false`.
+No-change, failure, stop, and uncertainty remain distinct. Failed drainage fences ownership through reporting failures.
+
+Parent verification passed **269/269**, with no exclusions or skips, plus the **1/1** browser regression.
+The **11/11** new application tests exercise real mode wiring, new files, CLI reconnect, stop, refusal, and three crash windows.
+Three retained application examples passed separately. All **164/164** recorded exact scopes were inactive and empty.
+Independent review and controlled #8 acceptance remain pending.
+
+Ticket #9 must still qualify actual executor-produced drafts through the live opaque handoff, with both stages sharing ownership and budgets.
+The [qualification parent review](implementation/ticket-09-parent-review.md) records the rejected first module result and required corrections.
+Neither a model claim nor a factory-owned oracle substitutes for retained candidate regression tests failing on base and passing on draft.
+Live model acceptance, real Vanguard/toolchain compatibility, and the real #10 demonstration remain separately authorized work.

@@ -2,7 +2,7 @@
 
 ## Status
 
-Phase 0 evaluation is complete, with runnable verification probes, [findings](docs/phase-0-findings.md), and an [accepted integration decision](docs/adr/0001-embed-pi-durable.md). Phase 1 tickets #1–#4 provide the CLI/backend foundation, operator-controlled recovery, verified bounded execution tools, and exact-source private workspaces. This is not yet a working maintenance factory. Dependencies and Node 24.21.0 are pinned locally. No credentials, services, or schedules have been installed or changed.
+Phase 0 evaluation is complete, with runnable verification probes, [findings](docs/phase-0-findings.md), and an [accepted integration decision](docs/adr/0001-embed-pi-durable.md). Phase 1 tickets #1–#7 have accepted controlled implementation checkpoints. Ticket #8 now connects bounded draft execution to the application and CLI; independent review and acceptance are pending. This is not yet a working maintenance factory. Dependencies and Node 24.21.0 are pinned locally. No credentials, services, or schedules have been installed or changed.
 
 The factory's job is repository maintenance, starting with [`vanguard`](https://github.com/the-data-sherpa/vanguard) as its first project. Vanguard replaces `crewroom` by the owner's decision on 2026-11-02. The restart gate passes for `@earendil-works/pi-durable` 1.5.0. The owner accepted direct embedding with SQLite and Pi's `ModelRuntime`, rather than adopting Durable Pi's applications. The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including outcome-first execution. A complexity classifier and specialist team are not required. The owner separately authorized ticket implementation. See [Running the controlled CLI](#running-the-controlled-cli) and the [implementation record](docs/phase-1-plan.md#implementation-record). Production-model availability and Vanguard execution remain unverified.
 
@@ -317,14 +317,53 @@ It verifies pristine recorded source, the matching bundle, and actual containmen
 Only then does it run fixed Vitest and lint checks, sequentially, within the original deadline and cumulative budget.
 Changed source or execution-profile inputs invalidate the evidence. Inspection and duplicate starts never rerun the gates.
 
-Passing all gates currently records `blocked / EXECUTOR_NOT_IMPLEMENTED`, `admission.readiness: baseline-healthy`, and `reviewReady: false`.
-Repository tools remain unavailable to an agent. An opaque, revalidated handoff is reserved for ticket #8; JSON receipts and controlled-fixture tokens cannot authorize the owner profile.
+Passing all gates in admission-only mode records `blocked / EXECUTOR_NOT_IMPLEMENTED`, `admission.readiness: baseline-healthy`, and `reviewReady: false`.
+This mode exposes no agent tools. Ticket #8's separate executor consumes the live, revalidated handoff; JSON receipts and controlled-fixture tokens cannot authorize the owner profile.
 `capabilities.productionModel` identifies the enabled owner adapter, not successful live authentication or provider acceptance.
 
 Parent verification passed **223/223** tests with no exclusions or skips, plus the **1/1** browser regression.
 Independent review found no concrete defects and passed **39/39** admission tests plus **2/2** focused boundary regressions.
 The parent accepted this controlled implementation checkpoint. No real Vanguard or production-model acceptance is claimed.
 See the [ticket #7 implementation record](docs/implementation/ticket-07.md) for interfaces, evidence, and recovery limits.
+
+## Bounded draft executor
+
+Ticket #8 now connects the repository executor to the application and CLI.
+Its controlled implementation awaits independent review and acceptance.
+After separate dependency preparation, close that backend and explicitly select executor mode:
+
+```bash
+node bin/factory-contained.mjs serve --execute-agent --state-dir "$STATE" --project-path "$PROJECT"
+
+# From a separate terminal:
+npm run factory -- start --state-dir "$STATE" --request-id draft-1 \
+  --brief "$BRIEF" --dependency-run "$PREPARATION_RUN" \
+  --write-path convex/syncHelpers.ts \
+  --write-path lib/__tests__/normalize-address.test.ts
+```
+
+These commands can load Pi credentials and make paid model requests. They describe the interface, not authorization or evidence of a live run.
+The owner selects explicit writable files as permissions, not a stage plan. Scope is immutable and part of duplicate-request identity.
+Admission gates still precede tool-enabled requests. Reads, writes, and fixed checks use the original limits and verified dependency handle.
+There is no install, shell, publication, or scope-expansion tool.
+`capabilities.repositoryTools` identifies the configured adapter, not a claim that admission has passed or a token remains live.
+
+Inspect retained plan, model/tool events, and actual draft evidence through `executorEvidence`:
+
+```bash
+npm run factory -- inspect RUN_ID --state-dir "$STATE" --event 0 --offset 0 --length 16384
+```
+
+Use the event index and returned `nextOffset` to page evidence, including after the backend closes.
+Admission remains historical baseline evidence after authorized edits.
+Drafts report `draft-produced / QUALIFICATION_REQUIRED`, never readiness; no-change and incomplete outcomes remain distinct.
+Reopening after a crash does not resume work or equate completed smoke with completed execution.
+Uncertain drainage retains backend ownership, even if failure reporting also fails.
+
+Parent verification passed **269/269**, with no exclusions or skips, plus the **1/1** browser regression.
+All **164/164** recorded exact scopes were inactive and empty.
+Qualification, live provider acceptance, real Vanguard compatibility, and the #10 demonstration remain separate gates.
+See the [ticket #8 implementation record](docs/implementation/ticket-08.md) for interfaces, retained examples, and recovery limits.
 
 ## Contained execution tools
 
@@ -342,13 +381,13 @@ The factory retains diagnostic receipts outside editable source. A passing diagn
 It conservatively charges each bounded operation as one tool round and drains before releasing ownership.
 Repository Vitest/lint checks require a verified private dependency handle. Without one, they reject with `DEPENDENCIES_NOT_PREPARED`.
 Controlled installed packages exercise this handoff and its read-only mounts, not real Vanguard test or lint compatibility.
-Ticket #7 implements admission checks with controlled verification. Agent tool registration remains ticket #8 work; no real Vanguard toolchain compatibility is claimed yet.
+Ticket #7 implements admission checks; ticket #8 registers bounded agent tools after those checks. Both have controlled verification, not real Vanguard toolchain acceptance.
 See the [containment implementation record](docs/implementation/ticket-03.md) for verification evidence and host restrictions.
 A later #6 test exposed an intermittent descendant-cleanup failure. The [cleanup correction](docs/implementation/containment-cleanup-correction.md) reproduces a startup race and adds verified namespace drainage plus foreground-owner-loss cleanup.
 The [preparation correction](docs/implementation/dependency-cleanup-correction.md) shares those namespace-lifetime rules with both installer stages and preserves failed-drain ownership through finalization and reporting errors.
 Final combined verification passed **184/184**, with no exclusions or skips, plus the **1/1** browser regression.
 Manager failure with owner loss and simultaneous backend/launcher death remain unverified recovery cases.
-Real agent execution stays disabled. The executor, readiness qualification, and live model/toolchain acceptance remain later gates.
+Owner execution requires explicit executor mode. Readiness qualification and live model/toolchain acceptance remain later gates.
 
 ## Build stages
 
@@ -378,7 +417,7 @@ npm run phase0:credentials  # Optional read-only local discovery. No inference.
 
 For an existing browser, use `CHROMIUM_PATH=/usr/bin/chromium npm run test:ui` instead of installing Chromium.
 See [Phase 0 findings](docs/phase-0-findings.md) for the commands, evidence, gaps, safety limits, and consensus ledger.
-The owner accepted direct integration in [ADR 0001](docs/adr/0001-embed-pi-durable.md) on 2026-11-02. The Phase 1 backend now includes the controlled foundation through #6 and the #7 admission checkpoint; real maintenance execution remains unverified.
+The owner accepted direct integration in [ADR 0001](docs/adr/0001-embed-pi-durable.md) on 2026-11-02. The Phase 1 backend includes the controlled foundation through #7 and the integrated #8 executor, which awaits independent review. Real maintenance execution remains unverified.
 
 **Time limit:** two working sessions. The manual-run restart gate passes, so the plain Node.js/SQLite fallback is not triggered.
 
@@ -386,7 +425,7 @@ The owner accepted direct integration in [ADR 0001](docs/adr/0001-embed-pi-durab
 
 ### 1. Complete one manual run
 
-The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including the minimal outcome-first baseline, then separately authorized implementation. Tickets #1–#6 supply the controlled foundation, and #7 joins the startup gates. The parent accepted #7 after independent review. Tickets #8–#10 and live model/Vanguard acceptance remain before the real maintenance demonstration.
+The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including the minimal outcome-first baseline, then separately authorized implementation. Tickets #1–#6 supply the controlled foundation, and #7 joins the startup gates. The parent accepted #7 after independent review. The integrated #8 executor awaits its independent review and acceptance. Qualification, ticket #10, and live model/Vanguard acceptance remain before the real maintenance demonstration.
 
 - Configure Vanguard for one human-selected offline logic/test change and a minimal set of tools. Use one-shot Vitest and lint as candidate checks, not the Sentry-enabled build or live-account integrations.
 - Record a local `main` commit and create a factory-owned worktree and branch from it using plain Git. Leave the existing checkout untouched; do not automatically fetch, pull, or create `dev`.

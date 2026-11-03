@@ -2,8 +2,8 @@
 
 Baseline: `48c40585972e56bd2bd6fe26d73f488238681ac7`.
 This isolated implementation follows [the executor/qualification contract](executor-qualification-contract.md).
-It adds executor modules, controlled execution tests, and this record.
-It does not connect the owner CLI or implement qualification.
+The isolated module checkpoint added executor modules, controlled execution tests, and this record.
+The parent integration below now connects the owner CLI. Qualification remains separate.
 
 All normal outcomes remain unqualified and have `reviewReady: false`.
 The worktree contains the retained draft. Model claims and durable completion cannot establish maintenance readiness.
@@ -196,36 +196,71 @@ Each artifact is at most 2 MiB. Inspection accepts at most 256 events and 128 Mi
 Large or unsupported evidence fails closed instead of silently discarding an effect.
 Full runner logs remain separately inspectable through the existing contained-check interface.
 
-## Parent wiring required
+## Parent application and CLI integration
 
-No parent-owned application, CLI, containment, run-tools, package, runtime, shared design, or qualification file changed.
-The current application still recognizes only the earlier admission-only mode.
-The controlled fixture supplies a narrow adapter and saves executor projections separately.
-It calls the real executor with the application's original budget and signal.
-It does not simulate model formatting, file effects, contained checks, or durable execution.
-Its synthetic `CONTROLLED_EXECUTOR_BRIDGE` application outcome is not final CLI integration.
+The module was integrated as `51411bd`, followed by application, control-server, and CLI wiring.
+The original module fixtures still use a narrow `CONTROLLED_EXECUTOR_BRIDGE` adapter.
+New application tests use the actual `repository-executor` mode and factory persistence, without that bridge.
+Only runtime transport and fault injection use controlled fixtures; file effects, contained checks, model formatting, and durable execution remain real.
 
-The parent still needs to:
+The explicit owner interface is:
 
-1. Select `repository-executor` through an explicit owner operation.
-2. Normalize and persist the initial executor scope before dispatch.
-3. Include that scope in immutable admission and duplicate-request comparisons.
-4. Supply synchronous `saveExecutor` and expose passive executor inspection with pagination.
-5. Map executor outcomes without promoting smoke or a model claim to completion or readiness.
-6. Preserve original admission as historical baseline evidence after authorized draft changes.
-7. Avoid applying the admission-only pristine-source inspection projection to a legitimate draft as current readiness.
-8. Keep the executor handle alive through qualification and supply the actual opaque verifier to ticket #9.
-9. Cancel both stages and join both drains before releasing ownership.
-10. Keep interrupted or uncertain runs fenced, without resubmission or assumed quiescence.
+```bash
+node bin/factory-contained.mjs serve --execute-agent --state-dir "$STATE" --project-path "$PROJECT"
+npm run factory -- start --state-dir "$STATE" --request-id draft-1 \
+  --brief "$BRIEF" --dependency-run "$PREPARATION_RUN" \
+  --write-path convex/syncHelpers.ts \
+  --write-path lib/__tests__/normalize-address.test.ts
+npm run factory -- inspect RUN_ID --state-dir "$STATE" --event 0 --offset 0 --length 16384
+```
 
-The executor handle does not expose a top-level submission ID at start because admission precedes executor submission.
-`saveExecutor` later supplies the executor submission ID.
-The parent must use that projection for any application execution-receipt identity check.
-The durable receipt retains the original application request ID and a separate phase request ID.
+These commands describe the interface, not live-operation authorization or evidence.
+The owner mode can initialize Pi credentials and make paid requests after prerequisites pass.
+It cannot be combined with fixture, admission-only, workspace-only, or model-preflight modes.
+`--write-path` accepts repeated explicit relative files, not globs or directories.
+The factory saves normalized scope before dispatch and includes it in duplicate-input comparisons and linked replacements.
+Capability flags describe the selected adapter, not live gate success or token authority.
 
-The parent must independently exercise actual executor/qualifier composition, CLI lifecycle, public outcomes, new files, stale evidence, and cancellation.
-Qualification owns regression-against-base evidence, final independent checks, complete patch capture, and work-item readiness.
-This module does not implement any of those claims.
+The synchronous `saveExecutor` callback persists detached snapshots and checks immutable kind, scope, and executor submission identity.
+The handle has no top-level submission ID at start because admission comes first.
+Later executor projections supply that identity; finalization preserves late updates.
+A completed preflight receipt after a crash records only `execution.preflightSubmissionId`, not executor completion.
+Passive reopening always leaves active executor runs interrupted, including a crash after recorded draft completion.
+No passive operation grants quiescence or enables recovery.
+
+The factory exposes `executorEvidence` through live and offline inspection.
+`inspectRun(id, { page, offset, length })` and CLI event pagination read the same bounded evidence.
+Invalid or incomplete artifacts produce an explicit inspection failure without replay or repair.
+Saved admission remains historical baseline evidence after authorized edits, rather than a pristine-source readiness claim about the draft.
+Successful executor outcomes are `draft-produced / QUALIFICATION_REQUIRED` or `no-change / NO_CHANGE`, always with `reviewReady: false`.
+Failed, stopped, interrupted, and budget-limited outcomes remain distinct.
+Drainage uncertainty fences ownership even when executor failure reporting also fails.
+
+Ticket #9 composition must still keep the executor handle alive, use its actual opaque handoff, and cancel and drain both stages together.
+Qualification owns retained candidate tests against base and draft, independent final checks, complete patches, and at-most-one work item.
+None of those readiness claims is implemented by this integration.
+
+### Parent verification
+
+The initial application-scope regression failed with `ADMISSION_NOT_ENABLED` instead of admitted executor policy.
+The actual draft path then exposed the missing persistence callback, followed by unsupported CLI evidence pagination.
+Each passed after its application or CLI implementation.
+
+Under Node 24.21.0:
+
+- Application and CLI tests: **11/11**, including retained new files, duplicate scope, linked permissions, failed preflight, stop, and failed-drain reporting.
+- Crash tests cover smoke completion, a synced mutation before settlement, and executor completion before application finalization.
+- Full suite: **269/269**, with no exclusions or skips, including all 258 module-checkpoint tests.
+- Existing browser regression: **1/1**, using installed Chromium.
+- Retained application/CLI draft, uncertain mutation, and failed-drain examples: **3/3**.
+- Exact-scope audit: **164/164** recorded scopes inactive and empty, including red runs and retained examples.
+
+Evidence resides at `/tmp/factory-ticket08-parent-{admission-red,execution-red,cli-red,lifecycle,full-suite,browser,retained}.log`.
+The audit is `/tmp/factory-ticket08-parent-scope-audit.json`.
+Private example indexes under `/tmp/factory-ticket08-parent-retained/` identify retained disposable state; cleanup requires owner authorization.
+Syntax, whitespace, and unchanged package/runtime checks passed.
+Independent review and controlled #8 acceptance remain pending.
+This checkpoint does not establish live model availability, real Vanguard compatibility, or the Phase 1 maintenance demonstration.
 
 ## Red-green and verification record
 

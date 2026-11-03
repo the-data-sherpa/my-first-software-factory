@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { privateDirectory, acquireOwner, openRecords, STORAGE_VERSIONS, ACTIVE_STATUSES, FactoryError,
   backupFactory as backupStores, restoreFactory as restoreStores } from './storage.mjs';
-import { inspectExecution, validateExecutionStores } from './execution.mjs';
+import { inspectExecution, validateExecutionStores, inspectExecutor, validateExecutorScope } from './execution.mjs';
 import { executionBudget, requireReview, requireRemainingBudget, requireSafeResume } from './recovery.mjs';
 import { observeWorkspace, prepareRunWorkspace, requireWorkspaceQuiescence } from './workspace-run.mjs';
 import { observeDependencies, prepareRunDependencies, requireDependencyQuiescence } from './dependency-run.mjs';
@@ -47,7 +47,11 @@ function applyReceipt(record, receipt, { passive = false } = {}) {
   if (receipt.runId && (receipt.runId !== record.id || receipt.requestId !== record.execution.requestId)) {
     throw new FactoryError('RECEIPT_MISMATCH', 'The execution receipt does not belong to this run.');
   }
-  if (receipt.submissionId) record.execution.submissionId = receipt.submissionId;
+  if (receipt.submissionId) {
+    if (record.executor && receipt.safety?.kind === 'model-only' && receipt.safety.purpose === 'preflight') {
+      record.execution.preflightSubmissionId = receipt.submissionId;
+    } else record.execution.submissionId = receipt.submissionId;
+  }
   if (record.operation === 'dependency-preparation') {
     record.status = 'interrupted';
     record.outcome = { kind: 'uncertain', reviewReady: false, reason: 'dependency_reconciliation_required' };
@@ -65,6 +69,22 @@ function applyReceipt(record, receipt, { passive = false } = {}) {
     return record;
   }
   const uncertainTools = record.reservations?.some((item) => item.kind === 'tool-round' && item.state === 'uncertain');
+  if (record.execution.mode === 'repository-executor') {
+    if (passive || uncertainTools) {
+      record.status = 'interrupted';
+      record.outcome = { kind: 'uncertain', reviewReady: false, reason: 'executor_reconciliation_required' };
+    } else if (['draft-produced', 'no-change'].includes(receipt.status)) {
+      record.status = 'completed';
+      record.outcome = { kind: receipt.status, reviewReady: false,
+        reason: receipt.status === 'draft-produced' ? 'QUALIFICATION_REQUIRED' : 'NO_CHANGE' };
+    } else {
+      record.status = receipt.status === 'stopped' ? 'stopped' : receipt.status === 'interrupted' ? 'interrupted'
+        : record.admission.status !== 'verified' ? 'blocked' : 'failed';
+      record.outcome = { kind: receipt.status === 'budget-limited' ? 'budget-limited' : record.status,
+        reviewReady: false, reason: receipt.reason ?? 'EXECUTOR_INCOMPLETE' };
+    }
+    return record;
+  }
   const passiveFixture = record.execution.mode === 'fixture' && record.execution.model === 'factory-fixture/no-tools-v1'
     && record.counters.toolRounds === 0 && receipt.safety?.kind === 'tool-free-fixture';
   if (uncertainTools || (passive && !passiveFixture && ['done', 'unanswered'].includes(receipt.status))) {
@@ -87,7 +107,29 @@ function applyReceipt(record, receipt, { passive = false } = {}) {
   return record;
 }
 
-export async function inspectHistory({ stateDir = DEFAULT_STATE_DIR, runId } = {}) {
+function inspectionOptions(options = {}) {
+  if (!options || typeof options !== 'object' || Array.isArray(options)
+    || Object.keys(options).some(key => !['page', 'offset', 'length'].includes(key))
+    || (options.page !== undefined && (!Number.isSafeInteger(options.page) || options.page < 0))
+    || (options.offset !== undefined && (!Number.isSafeInteger(options.offset) || options.offset < 0))
+    || (options.length !== undefined && (!Number.isInteger(options.length) || options.length < 4 || options.length > 16384))) {
+    throw new FactoryError('INVALID_ARGUMENTS', 'Use a nonnegative executor event index and byte offset, with a page length of 4–16384 bytes.');
+  }
+  return { ...options };
+}
+async function observeRunEvidence(record, stateDir, dependencyRun, options = {}) {
+  if (!record.executor) return observeAdmission(record, dependencyRun);
+  if (record.admission?.status === 'verified') record.admission.historical = true;
+  try { record.executorEvidence = await inspectExecutor({ directory: join(stateDir, 'runs', record.id), run: record, ...options }); }
+  catch {
+    record.executorEvidence = { status: 'unavailable', artifactStatus: 'invalid-or-incomplete', reviewReady: false,
+      inspectionFailure: { code: 'EXECUTOR_ARTIFACT', message: 'Executor evidence is invalid or incomplete. Retain the private artifacts and draft for inspection; no repair or replay occurred.' } };
+  }
+  return record;
+}
+
+export async function inspectHistory({ stateDir = DEFAULT_STATE_DIR, runId, inspection } = {}) {
+  const options = inspectionOptions(inspection);
   stateDir = await privateDirectory(stateDir, { create: false });
   const release = await acquireOwner(stateDir);
   let records;
@@ -98,10 +140,10 @@ export async function inspectHistory({ stateDir = DEFAULT_STATE_DIR, runId } = {
     for (const record of runs) {
       await observeWorkspace(record, stateDir);
       await observeDependencies(record, stateDir);
-      await observeAdmission(record, record.admission ? records.get(record.admission.dependencyRunId) : undefined);
       if (ACTIVE_STATUSES.includes(record.status)) {
         applyReceipt(record, await inspectExecution(join(stateDir, 'runs', record.id), { stateRoot: stateDir }), { passive: true });
       }
+      await observeRunEvidence(record, stateDir, record.admission ? records.get(record.admission.dependencyRunId) : undefined, options);
     }
     return runId ? runs[0] : runs;
   } finally { records?.close(); release(); }
@@ -155,11 +197,14 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
       throw new FactoryError('INVALID_REQUEST_ID', 'Supply a stable request ID of 1–128 letters, digits, dots, underscores, colons, or hyphens.');
     }
   };
-  const makeRecord = (requestId, brief, dependencyRunId) => {
-    if (execution?.mode === 'admission-only' && (!workspace || typeof dependencyRunId !== 'string' || !/^run_[a-f0-9-]{36}$/.test(dependencyRunId))) {
+  const makeRecord = (requestId, brief, dependencyRunId, scope) => {
+    const admissionEnabled = ['admission-only', 'repository-executor'].includes(execution?.mode);
+    if (execution?.mode === 'repository-executor') scope = validateExecutorScope(scope);
+    else if (scope !== undefined) throw new FactoryError('EXECUTOR_NOT_ENABLED', 'Write permissions require explicit repository-executor mode.');
+    if (admissionEnabled && (!workspace || typeof dependencyRunId !== 'string' || !/^run_[a-f0-9-]{36}$/.test(dependencyRunId))) {
       throw new FactoryError('DEPENDENCY_SELECTION_REQUIRED', 'Admission requires --dependency-run RUN_ID naming an explicitly prepared run. No latest bundle is selected or installed.');
     }
-    if (execution?.mode !== 'admission-only' && dependencyRunId !== undefined) throw new FactoryError('ADMISSION_NOT_ENABLED', 'Dependency selection requires explicit admission-only owner mode.');
+    if (!admissionEnabled && dependencyRunId !== undefined) throw new FactoryError('ADMISSION_NOT_ENABLED', 'Dependency selection requires explicit repository admission mode.');
     if (!execution && !workspace) throw new FactoryError('MODEL_NOT_READY', 'Production execution is not enabled yet. No fixture substitution was made.');
     const id = `run_${randomUUID()}`;
     const admittedAt = clock.now();
@@ -170,11 +215,12 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
       storageVersions: { ...STORAGE_VERSIONS },
       execution: { mode: execution?.mode ?? 'production-blocked', model: execution?.model ?? 'openai/gpt-6.1-sol', requestId: `factory:${id}:input:1` },
       ...(workspace ? { workspace: { status: 'pending' } } : {}),
-      ...(execution?.mode === 'admission-only' ? { admission: { version: 1, kind: execution.admissionKind,
+      ...(admissionEnabled ? { admission: { version: 1, kind: execution.admissionKind,
         dependencyRunId, status: 'pending', readiness: 'not-ready', reviewReady: false } } : {}),
-      capabilities: { repositoryTools: false,
+      ...(execution?.mode === 'repository-executor' ? { executor: { version: 1, kind: execution.admissionKind, status: 'pending', scope } } : {}),
+      capabilities: { repositoryTools: execution?.mode === 'repository-executor',
         productionModel: ['model-preflight', 'model-bounded-no-tools'].includes(execution?.mode)
-          || (execution?.mode === 'admission-only' && execution.admissionKind === 'owner'),
+          || (admissionEnabled && execution.admissionKind === 'owner'),
         resourceContainmentVerified: false },
       outcome: null,
     };
@@ -256,12 +302,28 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
             if (admission.dependencyRunId !== current.admission.dependencyRunId || admission.kind !== current.admission.kind) {
               throw new FactoryError('ADMISSION_CONFLICT', 'Saved admission choices are immutable.');
             }
-            current.admission = admission;
+            current.admission = structuredClone(admission);
             records.save(current);
           },
-        } : {}) });
+        } : {}),
+        ...(record.executor ? { saveExecutor: (executor) => {
+          const current = get(id);
+          if (executor.version !== 1 || executor.kind !== current.executor.kind
+            || JSON.stringify(validateExecutorScope(executor.scope)) !== JSON.stringify(current.executor.scope)) {
+            throw new FactoryError('EXECUTOR_CONFLICT', 'Saved executor identity and file permissions are immutable.');
+          }
+          if (executor.submissionId !== undefined) {
+            if (!Number.isSafeInteger(executor.submissionId) || executor.submissionId < 1
+              || (current.execution.submissionId !== undefined && current.execution.submissionId !== executor.submissionId)) {
+              throw new FactoryError('RECEIPT_MISMATCH', 'The executor submission identity cannot change.');
+            }
+            current.execution.submissionId = executor.submissionId;
+          }
+          current.executor = { ...structuredClone(executor), reviewReady: false };
+          records.save(current);
+        } } : {}) });
       record = get(id);
-      record.execution.submissionId = owned.handle.submissionId;
+      if (owned.handle.submissionId !== undefined) record.execution.submissionId = owned.handle.submissionId;
       records.save(record);
       if (owned.stopReason) void cancel(owned);
       const receipt = await Promise.race([owned.handle.finished, owned.stopped.promise]);
@@ -292,7 +354,8 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
         record.status = owned.stopReason === 'RUN_DEADLINE' ? 'failed' : 'stopped';
         record.outcome = { kind: record.status, reviewReady: false, reason: owned.stopReason };
       }
-      records.save({ ...latest, status: record.status, outcome: record.outcome, execution: record.execution });
+      records.save({ ...latest, status: record.status, outcome: record.outcome,
+        execution: record.executor ? latest.execution : record.execution });
       owned.drained = true;
     }
   }
@@ -306,21 +369,23 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
   return {
     stateDir,
     storageInfo: () => ({ ...STORAGE_VERSIONS }),
-    async startRun({ requestId, brief, dependencyRunId }) {
+    async startRun({ requestId, brief, dependencyRunId, scope }) {
       assertOpen();
       validateRequest(requestId);
       const admittedBrief = snapshotBrief(brief);
+      const normalizedScope = scope === undefined ? undefined : validateExecutorScope(scope);
       const existing = records.byRequest(requestId);
       if (existing) {
         if (existing.brief.text !== brief || JSON.stringify(existing.project) !== JSON.stringify(project)
-          || existing.admission?.dependencyRunId !== dependencyRunId) {
+          || existing.admission?.dependencyRunId !== dependencyRunId
+          || JSON.stringify(existing.executor?.scope) !== JSON.stringify(normalizedScope)) {
           throw new FactoryError('REQUEST_CONFLICT', 'That request ID already belongs to a different admitted task brief or project.');
         }
         return existing;
       }
       if (records.active()) conflict(records.active());
       if (transition) throw new FactoryError('CONTROL_BUSY', 'A recovery control is already in progress.');
-      const record = makeRecord(requestId, admittedBrief, dependencyRunId);
+      const record = makeRecord(requestId, admittedBrief, dependencyRunId, normalizedScope);
       records.save(record);
       launch(record.id);
       return structuredClone(record);
@@ -417,7 +482,7 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
         const safety = record.status === 'interrupted' ? await assess(record) : undefined;
         if (safety && !safety.quiescent) throw new FactoryError('RECOVERY_REQUIRED', 'A replacement cannot overlap surviving work. Reconcile containment first.');
         assertOpen();
-        const replacement = makeRecord(requestId, structuredClone(record.brief), record.admission?.dependencyRunId);
+        const replacement = makeRecord(requestId, structuredClone(record.brief), record.admission?.dependencyRunId, record.executor?.scope);
         replacement.replacesRunId = id;
         replacement.replacementReview = { review, reviewedAt: clock.now(), ...(safety ? { safety } : {}) };
         record.replacedByRunId = replacement.id;
@@ -430,13 +495,14 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
         return structuredClone(replacement);
       });
     },
-    inspectRun: async (id) => {
+    inspectRun: async (id, inspection) => {
+      const options = inspectionOptions(inspection);
       const record = await observeDependencies(await observeWorkspace(get(id), stateDir), stateDir);
-      return observeAdmission(record, record.admission ? records.get(record.admission.dependencyRunId) : undefined);
+      return observeRunEvidence(record, stateDir, record.admission ? records.get(record.admission.dependencyRunId) : undefined, options);
     },
     listRuns: async () => Promise.all(records.list().map(async (record) => {
       await observeDependencies(await observeWorkspace(record, stateDir), stateDir);
-      return observeAdmission(record, record.admission ? records.get(record.admission.dependencyRunId) : undefined);
+      return observeRunEvidence(record, stateDir, record.admission ? records.get(record.admission.dependencyRunId) : undefined);
     })),
     close() {
       if (closePromise) return closePromise;

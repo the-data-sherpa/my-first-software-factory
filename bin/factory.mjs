@@ -4,7 +4,7 @@ import { open } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { openFactory, inspectHistory, backupFactory, restoreFactory, DEFAULT_STATE_DIR, FactoryError } from '../src/factory.mjs';
-import { createFixtureExecution, createOwnerModelPreflight } from '../src/execution.mjs';
+import { createFixtureExecution, createOwnerModelPreflight, createRepositoryExecution } from '../src/execution.mjs';
 import { admitWorkspace, prepareWorkspace, inspectWorkspace } from '../src/workspace.mjs';
 
 const print = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
@@ -14,24 +14,25 @@ const options = {
   'state-dir': { type: 'string', default: DEFAULT_STATE_DIR },
   fixture: { type: 'boolean' }, 'fixture-delay-ms': { type: 'string' }, 'prepare-workspace': { type: 'boolean' },
   'model-preflight': { type: 'boolean' }, 'fetch-locked-packages': { type: 'boolean' },
-  'admit-agent': { type: 'boolean' }, 'dependency-run': { type: 'string' },
+  'admit-agent': { type: 'boolean' }, 'execute-agent': { type: 'boolean' }, 'dependency-run': { type: 'string' },
+  'write-path': { type: 'string', multiple: true }, event: { type: 'string' }, offset: { type: 'string' }, length: { type: 'string' },
   'project-path': { type: 'string' }, 'request-id': { type: 'string' }, 'bun-path': { type: 'string' },
   brief: { type: 'string' }, 'brief-text': { type: 'string' },
   to: { type: 'string' }, from: { type: 'string' }, review: { type: 'string' },
 };
 
 async function serve(values) {
-  if ((values['model-preflight'] && (values.fixture || values['prepare-workspace'] || values['admit-agent']))
-    || (values['admit-agent'] && (values.fixture || values['prepare-workspace']))) {
-    throw new FactoryError('INVALID_ARGUMENTS', 'Model preflight cannot enable fixtures or repository preparation.');
+  const modes = ['model-preflight', 'admit-agent', 'execute-agent'].filter(name => values[name]);
+  if (modes.length > 1 || (modes.length && (values.fixture || values['prepare-workspace']))) {
+    throw new FactoryError('INVALID_ARGUMENTS', 'Choose one owner execution mode, without fixture or workspace-only preparation flags.');
   }
   const fixture = values.fixture ? createFixtureExecution({ delayMs: Number(values['fixture-delay-ms'] ?? 0) }) : undefined;
   if (!values.fixture && values['fixture-delay-ms'] !== undefined) throw new FactoryError('INVALID_ARGUMENTS', 'Fixture options require --fixture.');
   const execution = fixture ?? (values['model-preflight'] ? createOwnerModelPreflight()
-    : values['admit-agent'] ? createAdmissionExecution() : undefined);
+    : values['admit-agent'] ? createAdmissionExecution() : values['execute-agent'] ? createRepositoryExecution() : undefined);
   const mode = execution?.mode ?? 'production-blocked';
   const factory = await openFactory({ stateDir: values['state-dir'], execution,
-    ...(values['prepare-workspace'] || values['admit-agent'] ? { workspace: { admit: admitWorkspace, prepare: prepareWorkspace, inspect: inspectWorkspace } } : {}),
+    ...(values['prepare-workspace'] || values['admit-agent'] || values['execute-agent'] ? { workspace: { admit: admitWorkspace, prepare: prepareWorkspace, inspect: inspectWorkspace } } : {}),
     ...(values['project-path'] ? { project: { id: 'vanguard', repositoryPath: values['project-path'] } } : {}),
   });
   const server = await serveFactory({ factory, mode, fixture: Boolean(fixture) });
@@ -93,8 +94,8 @@ try {
   const { values, positionals } = parsed;
   const [command, runId] = positionals;
   const allowed = {
-    serve: ['fixture', 'fixture-delay-ms', 'project-path', 'prepare-workspace', 'model-preflight', 'admit-agent'],
-    start: ['request-id', 'brief', 'brief-text', 'dependency-run'], inspect: [], list: [], info: [],
+    serve: ['fixture', 'fixture-delay-ms', 'project-path', 'prepare-workspace', 'model-preflight', 'admit-agent', 'execute-agent'],
+    start: ['request-id', 'brief', 'brief-text', 'dependency-run', 'write-path'], inspect: ['event', 'offset', 'length'], list: [], info: [],
     stop: [], resume: ['review'], replace: ['request-id', 'review'], 'prepare-dependencies': ['bun-path', 'fetch-locked-packages'],
     backup: ['to'], restore: ['from'],
   };
@@ -109,14 +110,24 @@ try {
   else if (command === 'restore') print(await restoreFactory({ stateDir: values['state-dir'], backupDir: values.from }));
   else {
     const stateDir = values['state-dir'];
+    const inspection = {};
+    for (const [option, name] of [['event', 'page'], ['offset', 'offset'], ['length', 'length']]) {
+      if (values[option] === undefined) continue;
+      if (!/^(0|[1-9][0-9]*)$/.test(values[option]) || !Number.isSafeInteger(Number(values[option]))) {
+        throw new FactoryError('INVALID_ARGUMENTS', 'Executor inspection pagination requires nonnegative integer arguments.');
+      }
+      inspection[name] = Number(values[option]);
+    }
+    const query = Object.keys(inspection).length ? `?${new URLSearchParams(inspection)}` : '';
     try {
-      if (command === 'start') print(await request(stateDir, 'POST', '/runs', { requestId: values['request-id'], brief: await readBrief(values), dependencyRunId: values['dependency-run'] }));
+      if (command === 'start') print(await request(stateDir, 'POST', '/runs', { requestId: values['request-id'], brief: await readBrief(values), dependencyRunId: values['dependency-run'],
+        ...(values['write-path'] ? { scope: { writePaths: values['write-path'] } } : {}) }));
       else if (['stop', 'resume', 'replace', 'prepare-dependencies'].includes(command)) print(await request(stateDir, 'POST', `/runs/${encodeURIComponent(runId)}/${command}`,
         { review: values.review, requestId: values['request-id'], bunPath: values['bun-path'], registry: values['fetch-locked-packages'] ?? false }));
-      else print(await request(stateDir, 'GET', command === 'info' ? '/health' : command === 'list' ? '/runs' : `/runs/${encodeURIComponent(runId)}`));
+      else print(await request(stateDir, 'GET', command === 'info' ? '/health' : command === 'list' ? '/runs' : `/runs/${encodeURIComponent(runId)}${query}`));
     } catch (error) {
       if (!['ENOENT', 'ECONNREFUSED'].includes(error.code)) throw error;
-      if (command === 'inspect' || command === 'list') print(await inspectHistory({ stateDir, runId }));
+      if (command === 'inspect' || command === 'list') print(await inspectHistory({ stateDir, runId, inspection }));
       else throw new FactoryError('BACKEND_UNAVAILABLE', 'Start the foreground backend explicitly before submitting work.');
     }
   }
