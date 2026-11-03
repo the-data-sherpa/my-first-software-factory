@@ -2,7 +2,7 @@
 
 ## Status
 
-Phase 0 evaluation is complete, with runnable verification probes, [findings](docs/phase-0-findings.md), and an [accepted integration decision](docs/adr/0001-embed-pi-durable.md). Phase 1 ticket #1 now provides a tested, tool-free CLI/backend foundation and closed-store backup/restore. This is not yet a working maintenance factory. Dependencies and Node 24.21.0 are pinned locally. No credentials, services, or schedules have been installed or changed.
+Phase 0 evaluation is complete, with runnable verification probes, [findings](docs/phase-0-findings.md), and an [accepted integration decision](docs/adr/0001-embed-pi-durable.md). Phase 1 tickets #1–#4 provide the CLI/backend foundation, operator-controlled recovery, verified bounded execution tools, and exact-source private workspaces. This is not yet a working maintenance factory. Dependencies and Node 24.21.0 are pinned locally. No credentials, services, or schedules have been installed or changed.
 
 The factory's job is repository maintenance, starting with [`vanguard`](https://github.com/the-data-sherpa/vanguard) as its first project. Vanguard replaces `crewroom` by the owner's decision on 2026-11-02. The restart gate passes for `@earendil-works/pi-durable` 1.5.0. The owner accepted direct embedding with SQLite and Pi's `ModelRuntime`, rather than adopting Durable Pi's applications. The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including outcome-first execution. A complexity classifier and specialist team are not required. The owner separately authorized ticket implementation. See [Running the controlled CLI](#running-the-controlled-cli) and the [implementation record](docs/phase-1-plan.md#implementation-record). Production-model availability and Vanguard execution remain unverified.
 
@@ -179,9 +179,23 @@ npm run factory -- info
 
 Closing the CLI leaves work with the foreground backend. Use Ctrl-C in the backend terminal to shut it down.
 Completed history remains available through `inspect` and `list` with the backend closed.
-A crashed run remains interrupted and blocks a new start. Explicit resume and retry controls belong to ticket #2.
+A crashed run remains interrupted and blocks a new start. Reopening never resumes it automatically.
+Ticket #2 adds explicit stop, reviewed resume, and linked replacement controls:
+
+```bash
+npm run factory -- stop RUN_ID
+npm run factory -- resume RUN_ID --review 'Reviewed the retained partial effects.'
+npm run factory -- replace RUN_ID --request-id replacement-001 \
+  --review 'Safe resume is unavailable. Start a new linked run.'
+```
+
+Resume requires trusted safety evidence and remaining original allowances. The operator's review cannot certify containment.
+A stopped run cannot resume. Replacement requires confirmed quiescence and retains the old run, its counters, and the link.
+The original 20-minute deadline includes downtime. Model attempts and tool rounds consume persistent allowances before effects.
+The controlled fixture proves only tool-free recovery, not production containment.
 Fixture outcomes always have `reviewReady: false` and do not satisfy the real maintenance milestone.
-Stored limits describe the accepted profile; they do not prove production request or OS resource enforcement.
+Production request limits and OS resource enforcement require their separate implementation gates.
+See the [recovery implementation record](docs/implementation/ticket-02.md) for the execution adapter contract and verification.
 
 State defaults to `~/.local/state/tiny-software-factory`, outside the public repository.
 Use `--state-dir DIRECTORY` consistently on all commands to select another private location.
@@ -206,6 +220,49 @@ These checks cover process crashes, not host or power failure guarantees.
 
 Run the combined unit/integration suite with `npm test`, or select `npm run test:phase0` and `npm run test:phase1`.
 The original browser probe remains available through `CHROMIUM_PATH=/usr/bin/chromium npm run test:ui`.
+
+## Preparing an exact-source workspace
+
+Workspace preparation is explicit. Starting a fixture backend without this option does not access the configured repository.
+Use the foreground resource launcher when exercising repository tools:
+
+```bash
+node bin/factory-contained.mjs serve --prepare-workspace --project-path /absolute/path/to/local/repository
+```
+
+Submit a brief through the separate CLI as above. The factory records the exact local `main` commit and its committed-file manifest.
+It creates an independent private Git store, branch, and locked worktree without changing the owner checkout.
+Inspection shows the saved source intent, prepared receipt, or sanitized failure.
+Preparation alone ends `blocked` with `MODEL_NOT_READY`. It does not call a model or substitute a fixture.
+An explicitly selected `--fixture` can exercise the preparation-to-fixture path against a disposable repository.
+
+Stop and shutdown cancel preparation and wait for its owned work to drain.
+After a crash, inspection discovers retained receipts without preparing again.
+A complete preparation receipt can establish quiescence for a workspace-only stop or linked replacement.
+An incomplete crashed preparation stays blocked pending trusted reconciliation. It is not silently retried.
+
+Workspace backups are private archives, not relocatable working states.
+Restore refuses archives containing workspace identities before creating a destination because their Git pointers contain absolute paths.
+Fixture-only backup/restore remains supported. Retain the original workspace and archive until explicit cleanup.
+See the [workspace implementation record](docs/implementation/ticket-04.md) for supported source features and retention behavior.
+
+## Contained execution tools
+
+The execution interface verifies the live foreground scope and actual bubblewrap launcher before exposing bounded file tools.
+It requires Linux x86-64, cgroup v2, user-systemd, Node 24.21.0, and the tested bubblewrap features.
+Missing controls block execution rather than selecting a weaker path.
+
+The accepted scope limits backend and descendants to 4 GiB memory, zero swap, and 256 tasks.
+Checks use read-only source snapshots, a 256 MiB writable scratch filesystem, a 120-second deadline, and 1 MiB combined output.
+File reads paginate at 16 KiB. Text writes are limited to 64 KiB.
+The sandbox hides Git metadata, private control paths, credentials, and other runs, and denies network access.
+The factory retains diagnostic receipts outside editable source. A passing diagnostic is never maintenance readiness.
+
+`createRunTools` binds these tools to the run's saved workspace, cancellation signal, and cumulative budget.
+It conservatively charges each bounded operation as one tool round and drains before releasing ownership.
+Repository Vitest/lint checks remain blocked with `DEPENDENCIES_NOT_PREPARED` until ticket #6 adds a verified private dependency bundle.
+Production-model admission and agent tool registration remain later gates. No real Vanguard toolchain compatibility is claimed yet.
+See the [containment implementation record](docs/implementation/ticket-03.md) for verification evidence and host restrictions.
 
 ## Build stages
 
@@ -235,7 +292,7 @@ npm run phase0:credentials  # Optional read-only local discovery. No inference.
 
 For an existing browser, use `CHROMIUM_PATH=/usr/bin/chromium npm run test:ui` instead of installing Chromium.
 See [Phase 0 findings](docs/phase-0-findings.md) for the commands, evidence, gaps, safety limits, and consensus ledger.
-The owner accepted direct integration in [ADR 0001](docs/adr/0001-embed-pi-durable.md) on 2026-11-02. Backend implementation remains Phase 1 work.
+The owner accepted direct integration in [ADR 0001](docs/adr/0001-embed-pi-durable.md) on 2026-11-02. The Phase 1 backend now implements tickets #1–#4.
 
 **Time limit:** two working sessions. The manual-run restart gate passes, so the plain Node.js/SQLite fallback is not triggered.
 
@@ -243,7 +300,7 @@ The owner accepted direct integration in [ADR 0001](docs/adr/0001-embed-pi-durab
 
 ### 1. Complete one manual run
 
-The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including the minimal outcome-first baseline, then separately authorized implementation. Ticket #1 supplies the controlled CLI/storage foundation. The remaining tickets are required for the real maintenance demonstration.
+The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including the minimal outcome-first baseline, then separately authorized implementation. Tickets #1–#4 supply the controlled CLI, recovery, containment, and source-admission foundation. Tickets #5–#10 are still required for the real maintenance demonstration.
 
 - Configure Vanguard for one human-selected offline logic/test change and a minimal set of tools. Use one-shot Vitest and lint as candidate checks, not the Sentry-enabled build or live-account integrations.
 - Record a local `main` commit and create a factory-owned worktree and branch from it using plain Git. Leave the existing checkout untouched; do not automatically fetch, pull, or create `dev`.

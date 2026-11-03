@@ -114,7 +114,7 @@ test('shutdown retains ownership until finalization drains even if cancellation 
     if (unexpected) { await unexpected.close(); assert.fail('Ownership was released before finalization drained'); }
   } finally { gate.resolve(); }
   await closing;
-  assert.equal((await inspectHistory({ stateDir, runId: admitted.id })).status, 'completed');
+  assert.equal((await inspectHistory({ stateDir, runId: admitted.id })).status, 'stopped');
 });
 
 test('brief validation is byte-bounded, requires all sections, and leaves no rejected admission', async (t) => {

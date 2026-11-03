@@ -5,6 +5,7 @@ import { privateDirectory, acquireOwner, openRecords, STORAGE_VERSIONS, ACTIVE_S
   backupFactory as backupStores, restoreFactory as restoreStores } from './storage.mjs';
 import { inspectExecution, validateExecutionStores } from './execution.mjs';
 import { executionBudget, requireReview, requireRemainingBudget, requireSafeResume } from './recovery.mjs';
+import { observeWorkspace, prepareRunWorkspace, requireWorkspaceQuiescence } from './workspace-run.mjs';
 
 export { FactoryError } from './storage.mjs';
 export const backupFactory = (options) => backupStores(options, validateExecutionStores);
@@ -73,6 +74,7 @@ export async function inspectHistory({ stateDir = DEFAULT_STATE_DIR, runId } = {
     const runs = runId ? [records.get(runId)] : records.list();
     if (runId && !runs[0]) throw new FactoryError('RUN_NOT_FOUND', 'No run has that identity.');
     for (const record of runs) {
+      await observeWorkspace(record, stateDir);
       if (ACTIVE_STATUSES.includes(record.status)) {
         applyReceipt(record, await inspectExecution(join(stateDir, 'runs', record.id), { stateRoot: stateDir }), { passive: true });
       }
@@ -86,7 +88,7 @@ export async function inspectHistory({ stateDir = DEFAULT_STATE_DIR, runId } = {
  * A thrown start/resume must have drained anything it started before rejecting.
  * assessRecovery must establish quiescence and reconcile partial effects without enabling scheduling.
  */
-export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id: 'vanguard', repositoryPath: join(homedir(), 'Projects', 'vanguard') }, execution,
+export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id: 'vanguard', repositoryPath: join(homedir(), 'Projects', 'vanguard') }, execution, workspace,
   clock = { now: Date.now, setTimeout, clearTimeout } } = {}) {
   stateDir = await privateDirectory(stateDir);
   if (project.id !== 'vanguard' || typeof project.repositoryPath !== 'string') {
@@ -99,7 +101,10 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
   catch (error) { release(); throw error; }
   try {
     const active = records.active();
-    if (active) records.save(applyReceipt(active, await inspectExecution(join(stateDir, 'runs', active.id), { stateRoot: stateDir }), { passive: true }));
+    if (active) {
+      await observeWorkspace(active, stateDir);
+      records.save(applyReceipt(active, await inspectExecution(join(stateDir, 'runs', active.id), { stateRoot: stateDir }), { passive: true }));
+    }
   } catch (error) { records.close(); release(); throw error; }
   let closing = false;
   let closePromise;
@@ -124,7 +129,7 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
     }
   };
   const makeRecord = (requestId, brief) => {
-    if (!execution) throw new FactoryError('MODEL_NOT_READY', 'Production execution is not enabled yet. No fixture substitution was made.');
+    if (!execution && !workspace) throw new FactoryError('MODEL_NOT_READY', 'Production execution is not enabled yet. No fixture substitution was made.');
     const id = `run_${randomUUID()}`;
     const admittedAt = clock.now();
     return {
@@ -132,12 +137,20 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
       deadlineAt: admittedAt + PHASE_1_LIMITS.runDeadlineMs, limits: { ...PHASE_1_LIMITS },
       counters: { modelAttempts: 0, toolRounds: 0, reservedOutputTokens: 0 }, reservations: [],
       storageVersions: { ...STORAGE_VERSIONS },
-      execution: { mode: execution.mode, model: execution.model, requestId: `factory:${id}:input:1` },
+      execution: { mode: execution?.mode ?? 'production-blocked', model: execution?.model ?? 'openai/gpt-6.1-sol', requestId: `factory:${id}:input:1` },
+      ...(workspace ? { workspace: { status: 'pending' } } : {}),
       capabilities: { repositoryTools: false, productionModel: false, resourceContainmentVerified: false },
       outcome: null,
     };
   };
   async function assess(record) {
+    await requireWorkspaceQuiescence(record, stateDir);
+    if (record.execution.mode === 'production-blocked' && record.workspace?.artifactStatus === 'prepared'
+      && record.execution.submissionId === undefined && record.counters.modelAttempts === 0
+      && record.counters.toolRounds === 0 && (record.reservations?.length ?? 0) === 0) {
+      return { kind: 'workspace-only', quiescent: true, resumable: false,
+        evidence: 'Validated preparation receipt confirms trusted Git drainage; this admission enabled no model or repository tools.' };
+    }
     if (!execution?.assessRecovery || execution.mode !== record.execution.mode || execution.model !== record.execution.model) {
       throw new FactoryError('RESUME_UNAVAILABLE', 'The original execution adapter cannot reconcile this run. Retain it until trusted recovery is available.');
     }
@@ -161,7 +174,7 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
     return owned.cancelPromise;
   }
   function requestStop(owned, reason) {
-    if (owned.drained || (owned.finalizing && reason !== 'RUN_DEADLINE')) return; // Completion already owns the final drain.
+    if (owned.drained) return; // An answer is not drainage. Stop still cancels during close().
     const record = get(owned.id);
     owned.stopReason ??= reason;
     record.stopRequested = true;
@@ -180,6 +193,15 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
       requireRemainingBudget(record, clock.now());
       record.status = 'running';
       records.save(record);
+      await prepareRunWorkspace({ get: () => get(id), save: records.save, stateDir, workspace, signal: controller.signal });
+      record = get(id);
+      if (owned.stopReason || controller.signal.aborted) throw new FactoryError('RUN_STOPPING', 'The run is stopping.');
+      requireRemainingBudget(record, clock.now());
+      if (!execution) {
+        record.status = 'blocked';
+        record.outcome = { kind: 'blocked', reviewReady: false, reason: 'MODEL_NOT_READY' };
+        return;
+      }
       const budget = executionBudget({ get: () => get(id), save: records.save, now: clock.now, signal: controller.signal });
       owned.handle = await execution[resume ? 'resume' : 'start']({ directory, runId: id, requestId: record.execution.requestId,
         brief: structuredClone(record.brief), run: structuredClone(record), budget, signal: controller.signal });
@@ -249,7 +271,7 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
       assertControl();
       const record = get(id);
       if (!ACTIVE_STATUSES.includes(record.status)) return record;
-      if (job?.id === id) {
+      if (job?.id === id && !job.drained) {
         requestStop(job, 'operator_stop');
         await job.promise;
         return get(id);
@@ -290,6 +312,7 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
       assertControl();
       const record = get(id);
       if (JSON.stringify(record.project) !== JSON.stringify(project)) throw new FactoryError('PROJECT_MISMATCH', 'A linked replacement must retain the original project identity.');
+      if (Boolean(record.workspace) !== Boolean(workspace)) throw new FactoryError('WORKSPACE_NOT_ENABLED', 'A linked replacement must retain the original workspace-preparation requirement.');
       requireReview(review);
       validateRequest(requestId);
       const existing = records.byRequest(requestId);
@@ -317,8 +340,8 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
         return structuredClone(replacement);
       });
     },
-    inspectRun: async (id) => get(id),
-    listRuns: async () => records.list(),
+    inspectRun: async (id) => observeWorkspace(get(id), stateDir),
+    listRuns: async () => Promise.all(records.list().map((record) => observeWorkspace(record, stateDir))),
     close() {
       if (closePromise) return closePromise;
       closing = true;

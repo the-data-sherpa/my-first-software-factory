@@ -152,7 +152,8 @@ export async function backupFactory({ stateDir, destination }, validateExecution
     await validateExecutions(stateDir, runs);
     const files = await filesBelow(stateDir);
     destination = await privateDirectory(destination, { newOnly: true, notWithin: [stateDir] });
-    const manifest = { formatVersion: 1, storageVersions: { ...STORAGE_VERSIONS }, files: [] };
+    const manifest = { formatVersion: 1, storageVersions: { ...STORAGE_VERSIONS },
+      ...(runs.some((run) => run.workspace?.intent) ? { workspaceRelocationRequired: true } : {}), files: [] };
     for (const path of files) {
       const target = join(destination, path);
       await mkdir(dirname(target), { recursive: true, mode: 0o700 });
@@ -202,6 +203,9 @@ async function restoreClosed({ stateDir, backupDir }, validateExecutions) {
   const sourceRecords = await openRecords(backupDir, { readOnly: true });
   let runs;
   try { runs = sourceRecords.list(); } finally { sourceRecords.close(); }
+  if (runs.some((run) => run.workspace?.intent)) {
+    throw new FactoryError('WORKSPACE_RELOCATION_REQUIRED', 'The archive contains workspace identities and Git pointers tied to their original private paths. Restore requires relocation support, which is not enabled. No destination was created.');
+  }
   await validateExecutions(backupDir, runs);
   stateDir = await privateDirectory(stateDir, { newOnly: true, notWithin: [backupDir] });
   for (const file of manifest.files) {

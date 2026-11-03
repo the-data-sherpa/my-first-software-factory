@@ -228,4 +228,43 @@ Verification used Node 24.21.0:
 - `CHROMIUM_PATH=/usr/bin/chromium npm run test:ui`: **1/1 passed**.
 - JavaScript syntax checks and `git diff --check` passed. Dependencies and the lock graph are unchanged.
 
-These checks use controlled providers and disposable state. A fixture completion is not maintenance success and always records `reviewReady: false`. Stop/resume controls, production-model preflight, repository containment and resource enforcement, exact-source worktrees, dependency preparation, draft production, and readiness qualification remain in tickets #2–#10. No factory production-model request or Vanguard execution was performed.
+These checks use controlled providers and disposable state. A fixture completion is not maintenance success and always records `reviewReady: false`.
+At the ticket #1 checkpoint, the remaining implementation belonged to tickets #2–#10. No factory production-model request or Vanguard execution was performed.
+
+### Parallel tickets #2–#4
+
+The owner authorized parallel implementation from committed baseline `9ed9439`.
+Each implementation used an isolated checkout. The parent integrated the modules and exercised their shared interfaces.
+
+- [Ticket #2](implementation/ticket-02.md): explicit stop, reviewed resume, linked replacement, persistent deadlines and cumulative reservations, and passive crash recovery.
+- [Ticket #3](implementation/ticket-03.md): actual foreground resource enforcement, bounded file tools and fixed checks, hidden private metadata, denied network access, and descendant cleanup.
+- [Ticket #4](implementation/ticket-04.md): exact local `main` admission, committed-source manifests, private native Git worktrees, retained failures, and application/CLI source inspection.
+
+The application saves source intent before preparation and the workspace receipt before executor dispatch.
+The execution interface binds contained tools to that workspace, the run abort signal, and its original cumulative budget.
+Workspace-only preparation remains `blocked / MODEL_NOT_READY`. A diagnostic or controlled fixture is not maintenance readiness.
+
+Independent recovery/workspace review found three defects, now covered by passing regressions:
+
+- Stop and shutdown must cancel during final drainage, even after the answer settles.
+- A drained interrupted run must use trusted recovery assessment before terminal stop.
+- Completed workspace-only preparation must permit stop or linked replacement without requiring a nonexistent execution adapter.
+
+Independent containment review found no concrete correctness or safety defects and passed all 12 containment/integration tests without skips.
+The accepted 4 GiB memory, zero-swap, and 256-task kernel settings were verified through the actual foreground scope.
+Destructive resource tests used smaller disposable limits, not production-sized stress.
+
+Incomplete crashed preparation remains fenced until trusted reconciliation establishes quiescence.
+Workspace archives retain the artifacts, but restore rejects absolute-path relocation before creating a destination.
+Fixture-only backup/restore remains supported. No factory production-model request, package fetch, real Vanguard access, or persistent service installation occurred.
+
+Final combined verification under Node 24.21.0:
+
+- `npm test`: **104/104 passed** (11 Phase 0 and 93 Phase 1 tests), with no skips.
+- `CHROMIUM_PATH=/usr/bin/chromium npm run test:ui`: **1/1 passed**.
+- JavaScript syntax, documentation paths/anchors, and whitespace checks passed.
+- Package files, the dependency graph, and the runtime pin are unchanged.
+- The transient test scopes have stopped. No installed service or global configuration change remains.
+
+Tickets #5 and #6 are the next independent slices: bounded selected-model preflight and the private dependency bundle.
+Real Vitest/lint, Bun/Vanguard toolchain compatibility, model-driven execution, and readiness qualification remain later gates.

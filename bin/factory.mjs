@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { openFactory, inspectHistory, backupFactory, restoreFactory, DEFAULT_STATE_DIR, FactoryError } from '../src/factory.mjs';
 import { createFixtureExecution } from '../src/execution.mjs';
+import { admitWorkspace, prepareWorkspace, inspectWorkspace } from '../src/workspace.mjs';
 
 const print = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 const safeError = (error) => error instanceof FactoryError
@@ -13,7 +14,7 @@ const safeError = (error) => error instanceof FactoryError
   : { code: 'OPERATION_FAILED', message: 'The operation failed. Private state was retained. No fallback was attempted.' };
 const options = {
   'state-dir': { type: 'string', default: DEFAULT_STATE_DIR },
-  fixture: { type: 'boolean' }, 'fixture-delay-ms': { type: 'string' },
+  fixture: { type: 'boolean' }, 'fixture-delay-ms': { type: 'string' }, 'prepare-workspace': { type: 'boolean' },
   'project-path': { type: 'string' }, 'request-id': { type: 'string' },
   brief: { type: 'string' }, 'brief-text': { type: 'string' },
   to: { type: 'string' }, from: { type: 'string' }, review: { type: 'string' },
@@ -23,6 +24,7 @@ async function serve(values) {
   const fixture = values.fixture ? createFixtureExecution({ delayMs: Number(values['fixture-delay-ms'] ?? 0) }) : undefined;
   if (!values.fixture && values['fixture-delay-ms'] !== undefined) throw new FactoryError('INVALID_ARGUMENTS', 'Fixture options require --fixture.');
   const factory = await openFactory({ stateDir: values['state-dir'], execution: fixture,
+    ...(values['prepare-workspace'] ? { workspace: { admit: admitWorkspace, prepare: prepareWorkspace, inspect: inspectWorkspace } } : {}),
     ...(values['project-path'] ? { project: { id: 'vanguard', repositoryPath: values['project-path'] } } : {}),
   });
   const socketPath = join(factory.stateDir, 'backend.sock');
@@ -140,7 +142,7 @@ try {
   const { values, positionals } = parsed;
   const [command, runId] = positionals;
   const allowed = {
-    serve: ['fixture', 'fixture-delay-ms', 'project-path'],
+    serve: ['fixture', 'fixture-delay-ms', 'project-path', 'prepare-workspace'],
     start: ['request-id', 'brief', 'brief-text'], inspect: [], list: [], info: [],
     stop: [], resume: ['review'], replace: ['request-id', 'review'],
     backup: ['to'], restore: ['from'],

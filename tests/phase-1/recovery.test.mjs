@@ -301,6 +301,54 @@ test('a per-run stop drains even when cancel throws, and fences admission and ow
   assert.match(stopped.cancellationError, /failed/);
 });
 
+test('stop and shutdown cancel owned work even after its answer has entered final drainage', { timeout: 5000 }, async (t) => {
+  for (const control of ['stop', 'shutdown']) {
+    const entered = Promise.withResolvers();
+    const release = Promise.withResolvers();
+    let signal;
+    let cancellations = 0;
+    t.after(() => release.resolve());
+    const { factory, stateDir } = await setup(t, {
+      mode: 'controlled-drain', model: 'controlled/no-network',
+      async start(input) {
+        signal = input.signal;
+        return { finished: Promise.resolve({ status: 'done', answer: 'An answer is not drainage.' }),
+          cancel: async () => { cancellations++; }, close: async () => { entered.resolve(); await release.promise; } };
+      },
+    });
+    const run = await factory.startRun({ requestId: `final-drain-${control}`, brief });
+    await entered.promise;
+    const ending = control === 'stop' ? factory.stopRun(run.id) : factory.close();
+    try {
+      await Promise.resolve(); await Promise.resolve();
+      assert.equal(signal.aborted, true);
+      assert.equal(cancellations, 1);
+      assert.equal((await factory.inspectRun(run.id)).stopRequested, true);
+      await assert.rejects(openFactory({ stateDir }), { code: 'BACKEND_OWNED' });
+    } finally { release.resolve(); await ending; }
+    await factory.close();
+    assert.equal((await inspectHistory({ stateDir, runId: run.id })).status, 'stopped');
+  }
+});
+
+test('a drained interrupted job uses trusted quiescence assessment for terminal stop without replay', async (t) => {
+  let assessments = 0;
+  const { factory } = await setup(t, { mode: 'controlled-uncertain', model: 'controlled/no-network',
+    async start({ budget }) {
+      budget.reserveToolRound({ roundId: 'uncertain-round' });
+      return { finished: Promise.resolve({ status: 'done', answer: 'Uncertain effect.' }), cancel: async () => {}, close: async () => {} };
+    },
+    async assessRecovery() { assessments++; return { quiescent: true, resumable: false, evidence: 'Controlled work has drained; its partial effect remains retained.' }; },
+  });
+  const run = await factory.startRun({ requestId: 'drained-uncertain', brief });
+  await until(() => factory.inspectRun(run.id), (run) => run.status === 'interrupted');
+  const stopped = await factory.stopRun(run.id);
+  assert.equal(stopped.status, 'stopped');
+  assert.equal(assessments, 1);
+  assert.equal(stopped.reservations[0].state, 'uncertain');
+  assert.equal(stopped.counters.toolRounds, 1);
+});
+
 test('stop drains a selected run, retains its admission and permits a new run without resuming the stopped run', async (t) => {
   const { factory, stateDir } = await setup(t);
   const run = await factory.startRun({ requestId: 'stop', brief });

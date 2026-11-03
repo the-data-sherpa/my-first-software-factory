@@ -10,8 +10,8 @@ Production repository checks remain blocked pending ticket #6's private dependen
 No Vanguard file, host model credential, or host model configuration was read.
 No Vanguard check, production model request, package download, publication, or installed service was used.
 
-The shared execution, factory, storage, workspace, CLI, package, and design files are unchanged.
-The parent must connect this module to the execution interface after integration with #2 and #4.
+The initial module checkout left shared execution, factory, storage, workspace, CLI, package, and design files unchanged.
+The parent integration described below connects the execution interface to #2 and #4.
 
 ## Public interface
 
@@ -242,5 +242,21 @@ The factory code, launcher, system toolchain, and ownership records are trusted 
 The agent controls source text, not those inputs or retained receipts.
 
 Real Bun/Vitest/lint compatibility, private dependency preparation, model admission, and Vanguard execution remain unverified and blocked.
-Parent integration with #2 and #4 is still required.
 The implementation does not claim completion of the real Phase 1 maintenance run.
+
+## Parent integration
+
+The factory-owned execution module re-exports production containment operations and `createRunTools`.
+It does not re-export the diagnostics-only fixture constructor.
+`createRunTools` accepts the trusted execution input from the factory, not model-selected source paths.
+It validates the saved workspace receipt against private ownership metadata before constructing tools.
+It uses a separate private run receipt directory and the run's abort signal.
+
+Each verification, read, write, and check consumes a persistent tool-round reservation before dispatch.
+The adapter conservatively charges each bounded call as one round.
+Successful calls settle evidence without refunding counters. Failed writes retain uncertain reservations for later partial-effect review.
+The trusted caller must join `close()` before returning from failed startup or finalization.
+
+Integration tests use disposable exact-source Git workspaces inside the accepted foreground resource envelope.
+They verify hidden Git/control metadata, budget continuity, source-bound check receipts, retained draft writes, and stop drainage through the application.
+Actual Vitest/lint, model-driven tool registration, and production safe-resume assessment remain later execution-adapter work.

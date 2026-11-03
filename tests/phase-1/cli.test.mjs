@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import test from 'node:test';
 import { until } from '../phase-0/helpers.mjs';
+import { fixture as repositoryFixture, git } from './workspace-fixture.mjs';
 
 const entry = fileURLToPath(new URL('../../bin/factory.mjs', import.meta.url));
 const exec = promisify(execFile);
@@ -92,6 +93,31 @@ test('a closed-store backup restores the same run through public CLI inspection'
 async function cliError(stateDir, code, ...args) {
   await assert.rejects(cli(stateDir, ...args), (error) => JSON.parse(error.stderr).error.code === code);
 }
+
+test('CLI workspace admission exposes exact source, preserves a dirty checkout, and remains production-blocked', { timeout: 30_000 }, async (t) => {
+  const { stateDir, briefPath } = await workspace(t);
+  const repository = await repositoryFixture(t);
+  await writeFile(join(repository.repositoryPath, 'logic.txt'), 'owner dirty source\n');
+  const before = git(repository.repositoryPath, 'status', '--porcelain=v1');
+  const running = await backend(t, stateDir, ['--prepare-workspace', '--project-path', repository.repositoryPath]);
+  const admitted = await cli(stateDir, 'start', '--request-id', 'cli-source', '--brief', briefPath);
+  const prepared = await until(() => cli(stateDir, 'inspect', admitted.id), (run) => run.status === 'blocked');
+  assert.equal(prepared.workspace.receipt.baseCommit, repository.base);
+  assert.equal(prepared.workspace.intent.sourceManifest.id, prepared.workspace.receipt.sourceManifestId);
+  assert.equal(prepared.counters.modelAttempts, 0);
+  assert.equal(prepared.outcome.reason, 'MODEL_NOT_READY');
+  assert.equal(git(repository.repositoryPath, 'status', '--porcelain=v1'), before);
+  assert.equal((await cli(stateDir, 'start', '--request-id', 'cli-source', '--brief', briefPath)).id, admitted.id);
+  git(repository.repositoryPath, 'update-ref', '-d', 'refs/heads/main');
+  const badSource = await cli(stateDir, 'start', '--request-id', 'cli-source-unavailable', '--brief', briefPath);
+  const failed = await until(() => cli(stateDir, 'inspect', badSource.id), (run) => run.status === 'failed');
+  assert.match(failed.workspace.failure.code, /^WORKSPACE_/);
+  assert.equal(failed.counters.modelAttempts, 0);
+  assert.equal(failed.workspace.intent, undefined);
+  assert.equal((await cli(stateDir, 'start', '--request-id', 'cli-source', '--brief', briefPath)).id, admitted.id);
+  await running.stop();
+  assert.deepEqual(await cli(stateDir, 'inspect', admitted.id), prepared);
+});
 
 test('competing CLI backends are fenced and production never substitutes a fixture', { timeout: 30_000 }, async (t) => {
   const { stateDir, briefPath } = await workspace(t);

@@ -12,6 +12,10 @@ import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite
 import { SqliteStorage, CURRENT_SQLITE_SCHEMA_VERSION } from '@earendil-works/pi-durable/storage/sqlite';
 import { privateFile, privateDirectory, STORAGE_VERSIONS, FactoryError } from './storage.mjs';
 
+// The factory owns this interface. Diagnostics-only exports are intentionally not re-exported here.
+export { createRunTools } from './run-tools.mjs';
+export { createContainedExecution, verifyContainmentEnvelope, inspectContainedChecks, CONTAINMENT_LIMITS, ContainmentError } from './containment.mjs';
+
 const Receipt = defineDoc({
   kind: 'factory.execution', version: 1, scope: 'session',
   initial: () => ({}), checkpointWhen: () => true,

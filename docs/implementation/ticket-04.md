@@ -4,11 +4,11 @@
 
 This slice implements `src/workspace.mjs` and its disposable-repository verification.
 It starts from baseline `9ed9439`.
-Application and CLI integration remain with the parent implementation.
-The isolated module tests do not complete the ticket's application/CLI acceptance criteria.
+The initial module checkout left application and CLI integration to the parent implementation.
+The parent integration described below adds those acceptance cases.
 
 No production-model request, Vanguard read, package download, publication, or draft commit occurred.
-The existing application, execution, storage, CLI, package files, and Phase 0 probes remain unchanged.
+The initial module checkout left the application, execution, storage, CLI, package files, and Phase 0 probes unchanged.
 
 ## Public contract
 
@@ -136,7 +136,7 @@ Await preparation settlement before releasing application ownership.
 Cancellation kills and drains the active trusted Git child and stops further preparation steps.
 It does not remove retained workspace artifacts.
 
-The parent still needs application/CLI cases for saved source identity, source failures, interrupted preparation, explicit retry, and passive reopen.
+The parent integration below covers saved source identity, source failures, interrupted preparation, stable admission retries, and passive reopen.
 Legacy controlled-execution fixtures must not implicitly select the real Vanguard checkout.
 Use explicitly configured disposable repositories for these integration cases.
 
@@ -239,7 +239,8 @@ The final verification command is:
 PATH=/home/cowen/.local/share/mise/installs/node/24.21.0/bin:$PATH npm test
 ```
 
-Application/CLI source visibility and the real containment integration remain unverified in this isolated checkout.
+The original isolated checkout did not verify application/CLI source visibility or containment integration.
+The parent integration below supplies those checks.
 No real Vanguard compatibility or toolchain check has run.
 The conservative unsupported-feature checks may block an actual repository until the operator addresses the reported preparation failure.
 
@@ -248,3 +249,24 @@ The existing factory backup/restore path has no workspace relocation support in 
 Do not advertise a copied backup as a resumable workspace without explicit relocation validation and application tests.
 The module assumes trusted private-state ownership, a local filesystem, and the application's single-writer lock.
 It does not defend against a separate host process with the same UID racing private metadata writes.
+
+## Parent integration
+
+`serve --prepare-workspace` installs the trusted workspace adapter. Without this option, legacy fixture runs do not access a repository.
+The factory saves the run before admission, the immutable intent before preparation, and the prepared receipt before executor dispatch.
+Without an executor, it retains the prepared workspace and reports `blocked / MODEL_NOT_READY` with zero model attempts.
+Inspection shows source identity and sanitized preparation failures through the application and CLI.
+
+Stop, shutdown, and deadline signals reach preparation. The factory retains ownership until preparation drains.
+After process death, inspection discovers completed workspace receipts without repairing artifacts or creating an execution input.
+Completed workspace-only preparation can be stopped or explicitly replaced using its verified quiescence and no-execution admission.
+Incomplete crashed preparation remains fenced until trusted reconciliation establishes quiescence.
+No operator flag overrides that block.
+
+The application tests exercise intent/receipt persistence ordering, dirty-checkout preservation, duplicate admission, source failures, cancellation, and both preparation crash windows.
+CLI tests exercise exact-source visibility, production blocking, idempotency, missing-source failures, and offline inspection.
+The contained integration exercises a native workspace with hidden `.git` and sibling control metadata, budgeted reads/writes/checks, and draining stop.
+
+Archive manifests identify workspaces that require relocation. Restore checks the actual records and rejects those archives before creating a destination.
+The original private workspace remains usable. Fixture-only backup/restore remains supported.
+This explicit refusal prevents a copied archive from silently referring back to the original workspace.

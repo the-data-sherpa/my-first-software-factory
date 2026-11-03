@@ -134,7 +134,18 @@ Tests inspect public records and receipts rather than private SQL or source text
 Existing backup, identity, immutable-brief, ownership, and native read-only regressions remain intact.
 
 No production-model request, host credential/config read, package installation, Vanguard access, GitHub write, push, or merge occurred.
-Actual contained-tool cancellation and safe production resume still require integration with ticket #3 and the later execution adapter.
+The parent integration now tests actual contained-tool cancellation through the application. Safe production resume still requires the later execution adapter.
 Model authentication, full-stream request deadlines, provider output-cap enforcement, and production model routing remain ticket #5 work.
 Repository execution and readiness qualification remain later slices.
 Host or power-loss durability is not established by these process-crash tests.
+
+## Parent integration review
+
+The independent recovery/workspace review found three control defects. Each has an executed regression and a correction:
+
+- Stop and shutdown now persist cancellation even after an answer settles, until final drainage is confirmed.
+- A drained interrupted job uses trusted recovery assessment before terminal stop. Its uncertain reservations remain retained.
+- Completed workspace-only preparation can establish quiescence without a nonexistent execution adapter, permitting stop or explicit linked replacement.
+
+An incomplete crashed preparation still blocks recovery. A completed workspace receipt does not authorize models or repository tools.
+The contained execution integration joins tool cleanup before releasing ownership and charges the original persistent tool budget.
