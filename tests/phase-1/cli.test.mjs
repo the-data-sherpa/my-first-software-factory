@@ -150,7 +150,43 @@ test('a crashed backend reopens passively and fences the interrupted run', { tim
   await cliError(stateDir, 'RUN_ACTIVE', 'start', '--request-id', 'must-not-wake-old', '--brief', briefPath);
   assert.deepEqual(await cli(stateDir, 'start', '--request-id', 'crashed', '--brief', briefPath), interrupted);
   assert.equal((await cli(stateDir, 'list')).length, 1);
+  await cliError(stateDir, 'REVIEW_REQUIRED', 'replace', admitted.id, '--request-id', 'replacement');
+  const replacement = await cli(stateDir, 'replace', admitted.id, '--request-id', 'replacement', '--review', 'Explicit replacement, not a resume.');
+  assert.notEqual(replacement.id, admitted.id);
+  assert.equal(replacement.replacesRunId, admitted.id);
+  await until(() => cli(stateDir, 'inspect', replacement.id), (run) => run.status === 'completed');
+  const retired = await cli(stateDir, 'inspect', admitted.id);
+  assert.equal(retired.status, 'replaced');
+  assert.equal(retired.replacedByRunId, replacement.id);
+  assert.deepEqual(retired.counters, interrupted.counters);
+  assert.equal(retired.execution.submissionId, interrupted.execution.submissionId);
   await reopened.stop();
+});
+
+test('CLI stop is terminal and an explicitly reviewed resume keeps the same submission and original budget', { timeout: 30_000 }, async (t) => {
+  const { stateDir, briefPath } = await workspace(t);
+  const running = await backend(t, stateDir, ['--fixture', '--fixture-delay-ms', '60000']);
+  const run = await cli(stateDir, 'start', '--request-id', 'resume-original', '--brief', briefPath);
+  const before = await until(() => cli(stateDir, 'inspect', run.id), (item) => Boolean(item.execution.submissionId));
+  await running.stop('SIGKILL');
+  const reopened = await backend(t, stateDir, ['--fixture']);
+  await cliError(stateDir, 'REVIEW_REQUIRED', 'resume', run.id);
+  await cli(stateDir, 'resume', run.id, '--review', 'Reviewed retained partial output. No tools were installed.');
+  const done = await until(() => cli(stateDir, 'inspect', run.id), (item) => item.status === 'completed');
+  assert.equal(done.execution.submissionId, before.execution.submissionId);
+  assert.equal(done.execution.requestId, before.execution.requestId);
+  assert.equal(done.requestId, 'resume-original');
+  assert.equal(done.deadlineAt, before.deadlineAt);
+  assert.equal(done.counters.modelAttempts, 2);
+  assert.equal(done.counters.reservedOutputTokens, 16384);
+  assert.equal(done.capabilities.resourceContainmentVerified, false);
+  assert.equal(done.recovery.safety.kind, 'tool-free-fixture');
+  await reopened.stop();
+  const delayed = await backend(t, stateDir, ['--fixture', '--fixture-delay-ms', '60000']);
+  const next = await cli(stateDir, 'start', '--request-id', 'stop-command', '--brief', briefPath);
+  assert.equal((await cli(stateDir, 'stop', next.id)).status, 'stopped');
+  await cliError(stateDir, 'RUN_NOT_INTERRUPTED', 'resume', next.id, '--review', 'Cannot revive a stopped run.');
+  await delayed.stop();
 });
 
 test('crash reconciliation finds a committed execution receipt without resubmitting admission', { timeout: 30_000 }, async (t) => {

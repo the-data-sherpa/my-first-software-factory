@@ -94,14 +94,20 @@ export async function openRecords(stateDir, { readOnly = false } = {}) {
       throw new FactoryError('STORAGE_VERSION', 'This factory storage version is not supported. Keep a closed-store backup before migration.');
     }
     const decode = (row) => row ? JSON.parse(row.record) : undefined;
+    const save = (record) => database.prepare(`INSERT INTO runs VALUES (?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET status=excluded.status, record=excluded.record`).run(
+      record.id, record.requestId, record.status, JSON.stringify(record));
     return {
       get: (id) => decode(database.prepare('SELECT record FROM runs WHERE id=?').get(id)),
       byRequest: (id) => decode(database.prepare('SELECT record FROM runs WHERE request_id=?').get(id)),
       active: () => decode(database.prepare("SELECT record FROM runs WHERE status IN ('admitted', 'running', 'interrupted')").get()),
       list: () => database.prepare('SELECT record FROM runs ORDER BY rowid').all().map(decode),
-      save: (record) => database.prepare(`INSERT INTO runs VALUES (?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET status=excluded.status, record=excluded.record`).run(
-        record.id, record.requestId, record.status, JSON.stringify(record)),
+      save,
+      saveTogether: (...runs) => {
+        database.exec('BEGIN IMMEDIATE');
+        try { for (const run of runs) save(run); database.exec('COMMIT'); }
+        catch (error) { database.exec('ROLLBACK'); throw error; }
+      },
       close: () => database.close(),
     };
   } catch (error) { database.close(); throw error; }

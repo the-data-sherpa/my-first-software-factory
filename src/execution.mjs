@@ -27,7 +27,8 @@ async function result(harness) {
   const submission = await harness.submission(receipt.submissionId, context);
   if (!submission) return { status: 'missing', submissionId: receipt.submissionId };
   const settled = await submission.status(context); // Lookup only; never wait or resubmit during inspection.
-  const identity = { submissionId: receipt.submissionId, runId: receipt.runId, requestId: receipt.requestId };
+  const identity = { submissionId: receipt.submissionId, runId: receipt.runId, requestId: receipt.requestId,
+    ...(receipt.safety ? { safety: receipt.safety } : {}) };
   if (settled.status !== 'done') return { ...identity, status: settled.status, reason: settled.reason };
   const root = await harness.root(context);
   const answer = await root.commit((tx) => tx.entry(settled.answer), context);
@@ -128,12 +129,28 @@ export async function validateExecutionStores(stateDir, runs) {
   }
 }
 
-/** Explicit controlled adapter. It loads no user configuration or credentials and installs no tools. */
-export function createFixtureExecution({ delayMs = 0, answer = 'Controlled fixture complete. No repository work was performed.' } = {}) {
+/** Explicit controlled adapter. It loads no user configuration or credentials and installs no tools.
+ * Recovery proves only that this in-process, tool-free fixture has no surviving external effects.
+ * It does not verify any production containment boundary.
+ */
+export function createFixtureExecution({ delayMs = 0, transientFailures = 0, answer = 'Controlled fixture complete. No repository work was performed.' } = {}) {
   if (!Number.isInteger(delayMs) || delayMs < 0 || delayMs > 60_000) throw new RangeError('Invalid fixture delay');
-  return {
-    mode: 'fixture', model: 'factory-fixture/no-tools-v1',
-    async start({ directory, runId, requestId, brief }) {
+  if (!Number.isInteger(transientFailures) || transientFailures < 0 || transientFailures > 2) throw new RangeError('Invalid fixture failure count');
+  const mode = 'fixture';
+  const model = 'factory-fixture/no-tools-v1';
+  const safety = { kind: 'tool-free-fixture', version: 1 };
+  async function assessRecovery({ directory, run }) {
+    const receipt = await inspectExecution(directory);
+    const fixtureOnly = run.execution.mode === mode && run.execution.model === model
+      && !run.capabilities.repositoryTools && !run.reservations?.some((item) => item.kind === 'tool-round')
+      && (receipt.status === 'missing' || (receipt.runId === run.id && receipt.requestId === run.execution.requestId
+        && receipt.safety?.kind === safety.kind && receipt.safety?.version === 1));
+    const attempts = run.reservations?.filter((item) => item.kind === 'model' && item.generationId === run.execution.requestId).length ?? run.counters.modelAttempts;
+    return { ...safety, quiescent: fixtureOnly,
+      resumable: fixtureOnly && ['queued', 'placed'].includes(receipt.status) && attempts < 2,
+      evidence: fixtureOnly ? 'In-process controlled provider; no tools, subprocesses, external requests or repository writes. Not production containment.' : 'Fixture-only safety cannot establish quiescence or reconcile these effects.' };
+  }
+  async function runFixture({ directory, runId, requestId, brief, budget, run }, resume) {
       const path = join(directory, 'execution.sqlite');
       await privateFile(path);
       const models = await ModelRuntime.create({
@@ -141,30 +158,58 @@ export function createFixtureExecution({ delayMs = 0, answer = 'Controlled fixtu
         modelsPath: null, refreshOnCreate: false, allowModelNetwork: false,
       });
       const faux = fauxProvider({ provider: 'factory-fixture', models: [{ id: 'no-tools-v1', maxTokens: 8192 }], tokensPerSecond: Infinity });
-      faux.setResponses([async (_transcript, options) => {
-        await delay(delayMs, undefined, { signal: options?.signal });
+      let reservation;
+      let invoked = 0;
+      const respond = async (_transcript, options) => {
+        budget.assertActive();
+        if (invoked) reservation = budget.reserveModelAttempt({ generationId: requestId, retry: true });
+        invoked++;
+        const signal = AbortSignal.any([budget.signal, ...(options?.signal ? [options.signal] : [])]);
+        await delay(delayMs, undefined, { signal });
+        budget.settle(reservation.id, 'Controlled tool-free response returned; usage is not billed spend.');
+        if (invoked <= transientFailures) return fauxAssistantMessage('', { stopReason: 'error', errorMessage: '429 rate limit exceeded (controlled fixture)' });
         return fauxAssistantMessage(answer);
-      }]);
+      };
+      // Each permitted durable attempt must pass the reservation gate, including an automatic transient retry.
+      faux.setResponses([respond, respond]);
       models.registerNativeProvider(faux.provider);
       const harness = await Harness.open(await openNodeSqliteStorage(path), {
-        models, registry: createRegistry(), settings,
+        models, registry: createRegistry(), settings: { ...settings, retry: { enabled: true, maxRetries: 1, baseDelayMs: 0 } },
       }, context);
       try {
         const root = await harness.root(context, { agent: {
           model: { provider: 'factory-fixture', modelId: 'no-tools-v1' }, tools: [], maxTurns: 1,
         } });
-        // This receipt is atomic with admission in the EXECUTION store, not with the factory store.
-        const submissionId = await harness.commit(async (tx) => {
-          const id = await root.submit(tx, { type: 'input', content: brief.text, requestId });
-          Object.assign(await tx.doc(Receipt), { version: STORAGE_VERSIONS.execution, runId, requestId, submissionId: id });
-          return id;
-        }, context);
+        // Resume reacquires ONLY the original durable submission. Never submit another input.
+        let submissionId;
+        if (resume) {
+          const receipt = await harness.snapshot(Receipt, context);
+          if (receipt?.runId !== runId || receipt.requestId !== requestId || receipt.submissionId !== run.execution.submissionId) {
+            throw new FactoryError('RECEIPT_MISMATCH', 'Resume requires the original durable submission.');
+          }
+          submissionId = receipt.submissionId;
+        } else {
+          // Atomic in the execution store, not across both stores.
+          submissionId = await harness.commit(async (tx) => {
+            const id = await root.submit(tx, { type: 'input', content: brief.text, requestId });
+            Object.assign(await tx.doc(Receipt), { version: STORAGE_VERSIONS.execution, runId, requestId, submissionId: id, safety });
+            return id;
+          }, context);
+        }
+        reservation = budget.reserveModelAttempt({ generationId: requestId, retry: resume });
         harness.resume();
         const submission = await harness.submission(submissionId, context);
         const finished = submission.wait(context).then(() => result(harness));
         finished.catch(() => {});
         return { submissionId, finished, cancel: () => root.abort(context), close: () => harness.close(context) };
       } catch (error) { await harness.close(context); throw error; }
+  }
+  return { mode, model, assessRecovery,
+    start: (input) => runFixture(input, false),
+    async resume(input) {
+      const assessment = await assessRecovery(input);
+      if (!assessment.resumable) throw new FactoryError('UNSAFE_RESUME', 'The original fixture submission is not safely resumable.');
+      return runFixture(input, true);
     },
   };
 }
