@@ -461,7 +461,7 @@ Evidence and retained fixture indexes are under `/tmp/factory-ticket09-parent-wo
 `red.log`, `red/input.json`, and `red/result.json` identify the failed run and its actual reporter output.
 `green.log`, `focused.log`, `qualification.log`, and `scope-audit.json` record the correction checks.
 The parent did not repeat all 223 unrelated baseline tests in this branch; the prior **286/286** full result remains historical, not a new combined result.
-No real target, live model, external request, package installation, tracker write, or push occurred.
+No real target, live model, external request, factory dependency installation, tracker write, or push occurred.
 
 The separate admission `--minWorkers=1` conflict remains unresolved.
 Ticket #9 is still not integrated into the parent checkout or accepted.
