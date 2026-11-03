@@ -13,6 +13,10 @@ import { SqliteStorage, CURRENT_SQLITE_SCHEMA_VERSION } from '@earendil-works/pi
 import { privateFile, privateDirectory, STORAGE_VERSIONS, FactoryError } from './storage.mjs';
 
 // The factory owns this interface. Diagnostics-only exports are intentionally not re-exported here.
+export { createModelRequests, MODEL_ROUTE, MODEL_LIMITS } from './model.mjs';
+export { createModelExecution } from './model-execution.mjs';
+// Internal factory adapter building blocks; never expose SDK handles to the app or CLI.
+export { Receipt as executionReceiptDocument, result as readExecutionResult };
 export { createRunTools } from './run-tools.mjs';
 export { createContainedExecution, verifyContainmentEnvelope, inspectContainedChecks, CONTAINMENT_LIMITS, ContainmentError } from './containment.mjs';
 

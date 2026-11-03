@@ -52,19 +52,26 @@ export function executionBudget({ get, save, now, signal }) {
     get deadlineAt() { return get().deadlineAt; },
     signal,
     assertActive() { current(); },
-    reserveModelAttempt({ generationId, retry = false, smoke = false, requestedOutputTokens } = {}) {
+    modelAttempts() { return structuredClone(get().reservations?.filter((item) => item.kind === 'model') ?? []); },
+    reserveModelAttempt({ generationId, retry = false, smoke = false, requestedOutputTokens, requestDeadlineAt } = {}) {
       identity(generationId);
       const run = current();
       const prior = run.reservations.filter((item) => item.kind === 'model' && item.generationId === generationId);
+      if (prior.some((item) => item.smoke)) throw new FactoryError('SMOKE_LIMIT', 'The initial smoke allows one attempt, never a retry.');
       if (retry ? prior.length !== 1 : prior.length !== 0) throw new FactoryError('RETRY_LIMIT', 'A generation allows one original attempt and at most one retry.');
       if (run.counters.modelAttempts >= run.limits.modelAttempts) throw new FactoryError('MODEL_ATTEMPT_LIMIT', 'The original model attempt allowance is exhausted.');
       if (smoke && run.reservations.some((item) => item.smoke)) throw new FactoryError('SMOKE_LIMIT', 'The initial smoke allows one attempt.');
       const cap = smoke ? run.limits.smokeOutputTokens : run.limits.requestedOutputTokens;
       requestedOutputTokens ??= cap;
       if (!Number.isInteger(requestedOutputTokens) || requestedOutputTokens < 1 || requestedOutputTokens > cap) throw new FactoryError('INVALID_RESERVATION', 'Requested output exceeds the admitted output cap.');
+      if (requestDeadlineAt !== undefined && (!Number.isSafeInteger(requestDeadlineAt) || requestDeadlineAt <= now()
+        || requestDeadlineAt > Math.min(run.deadlineAt, now() + (smoke ? 60_000 : 180_000)))) {
+        throw new FactoryError('INVALID_RESERVATION', 'The request deadline must fit within the original run and full-stream limits.');
+      }
       run.counters.modelAttempts++;
       run.counters.reservedOutputTokens += requestedOutputTokens;
-      return reserve(run, { kind: 'model', generationId, retry, smoke, requestedOutputTokens });
+      return reserve(run, { kind: 'model', generationId, retry, smoke, requestedOutputTokens,
+        ...(requestDeadlineAt === undefined ? {} : { requestDeadlineAt }) });
     },
     reserveToolRound({ roundId } = {}) {
       identity(roundId);
@@ -74,10 +81,24 @@ export function executionBudget({ get, save, now, signal }) {
       run.counters.toolRounds++;
       return reserve(run, { kind: 'tool-round', roundId });
     },
-    settle(reservationId, evidence) {
+    observeModelUsage(reservationId, accounting) {
+      const run = get();
+      const item = run.reservations?.find((entry) => entry.id === reservationId);
+      if (!item || item.kind !== 'model' || item.state !== 'uncertain' || !accounting?.usage || accounting.preflight !== false) {
+        throw new FactoryError('INVALID_RESERVATION', 'Only an outstanding model attempt can retain observed usage before drainage.');
+      }
+      item.accounting = structuredClone(accounting);
+      item.usageObservedAt = now();
+      save(run); // Usage is durable now; it does not settle uncertain execution or pass preflight.
+    },
+    settle(reservationId, evidence, accounting) {
       const run = get();
       const item = run.reservations?.find((entry) => entry.id === reservationId);
       if (!item || item.state !== 'uncertain' || typeof evidence !== 'string' || !evidence || Buffer.byteLength(evidence) > 4096) throw new FactoryError('INVALID_RESERVATION', 'Settle an outstanding reservation with bounded evidence.');
+      if (accounting !== undefined) {
+        if (item.kind !== 'model') throw new FactoryError('INVALID_RESERVATION', 'Only model attempts carry model accounting.');
+        item.accounting = structuredClone(accounting);
+      }
       item.state = 'settled';
       item.evidence = evidence;
       item.settledAt = now();
