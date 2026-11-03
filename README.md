@@ -298,6 +298,33 @@ A crashed installer stays interrupted. A completed source workspace alone cannot
 Dependency bundles with Bun `.bin` links cannot use the existing backup path. Keep their private state until explicit cleanup.
 See the [dependency application record](docs/implementation/dependency-application.md) for lifecycle evidence and remaining gates.
 
+## Repository admission gate
+
+Ticket #7 connects the existing prerequisites without installing an agent executor.
+After a separate source/dependency preparation run finishes, close that backend and start admission-only mode with the same state directory and project:
+
+```bash
+node bin/factory-contained.mjs serve --admit-agent --state-dir "$STATE" --project-path "$PROJECT"
+
+# From a separate terminal:
+npm run factory -- start --state-dir "$STATE" --request-id admission-1 \
+  --brief "$BRIEF" --dependency-run "$PREPARATION_RUN"
+```
+
+These owner commands can initialize Pi credentials and send a paid model request. They describe the interface, not authorization or evidence of a live run.
+Admission never selects a latest bundle, installs dependencies, or fetches packages.
+It verifies pristine recorded source, the matching bundle, and actual containment before bounded same-run model preflight.
+Only then does it run fixed Vitest and lint checks, sequentially, within the original deadline and cumulative budget.
+Changed source or execution-profile inputs invalidate the evidence. Inspection and duplicate starts never rerun the gates.
+
+Passing all gates currently records `blocked / EXECUTOR_NOT_IMPLEMENTED`, `admission.readiness: baseline-healthy`, and `reviewReady: false`.
+Repository tools remain unavailable to an agent. An opaque, revalidated handoff is reserved for ticket #8; JSON receipts and controlled-fixture tokens cannot authorize the owner profile.
+`capabilities.productionModel` identifies the enabled owner adapter, not successful live authentication or provider acceptance.
+
+Parent verification passed **223/223** tests with no exclusions or skips, plus the **1/1** browser regression.
+Independent admission review remains pending. No real Vanguard or production-model acceptance is claimed.
+See the [ticket #7 implementation record](docs/implementation/ticket-07.md) for interfaces, evidence, and recovery limits.
+
 ## Contained execution tools
 
 The execution interface verifies the live foreground scope and actual bubblewrap launcher before exposing bounded file tools.
@@ -314,7 +341,7 @@ The factory retains diagnostic receipts outside editable source. A passing diagn
 It conservatively charges each bounded operation as one tool round and drains before releasing ownership.
 Repository Vitest/lint checks require a verified private dependency handle. Without one, they reject with `DEPENDENCIES_NOT_PREPARED`.
 Controlled installed packages exercise this handoff and its read-only mounts, not real Vanguard test or lint compatibility.
-Production-model admission and agent tool registration remain later gates. No real Vanguard toolchain compatibility is claimed yet.
+Ticket #7 implements admission checks with controlled verification. Agent tool registration remains ticket #8 work; no real Vanguard toolchain compatibility is claimed yet.
 See the [containment implementation record](docs/implementation/ticket-03.md) for verification evidence and host restrictions.
 A later #6 test exposed an intermittent descendant-cleanup failure. The [cleanup correction](docs/implementation/containment-cleanup-correction.md) reproduces a startup race and adds verified namespace drainage plus foreground-owner-loss cleanup.
 The [preparation correction](docs/implementation/dependency-cleanup-correction.md) shares those namespace-lifetime rules with both installer stages and preserves failed-drain ownership through finalization and reporting errors.
@@ -349,7 +376,7 @@ npm run phase0:credentials  # Optional read-only local discovery. No inference.
 
 For an existing browser, use `CHROMIUM_PATH=/usr/bin/chromium npm run test:ui` instead of installing Chromium.
 See [Phase 0 findings](docs/phase-0-findings.md) for the commands, evidence, gaps, safety limits, and consensus ledger.
-The owner accepted direct integration in [ADR 0001](docs/adr/0001-embed-pi-durable.md) on 2026-11-02. The Phase 1 backend now implements tickets #1–#4.
+The owner accepted direct integration in [ADR 0001](docs/adr/0001-embed-pi-durable.md) on 2026-11-02. The Phase 1 backend now includes the controlled foundation through #6 and the #7 admission checkpoint; real maintenance execution remains unverified.
 
 **Time limit:** two working sessions. The manual-run restart gate passes, so the plain Node.js/SQLite fallback is not triggered.
 
@@ -357,7 +384,7 @@ The owner accepted direct integration in [ADR 0001](docs/adr/0001-embed-pi-durab
 
 ### 1. Complete one manual run
 
-The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including the minimal outcome-first baseline, then separately authorized implementation. Tickets #1–#4 supply the controlled CLI, recovery, containment, and source-admission foundation. Tickets #5–#10 are still required for the real maintenance demonstration.
+The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including the minimal outcome-first baseline, then separately authorized implementation. Tickets #1–#6 supply the controlled foundation, and #7 joins the startup gates. Independent #7 review, tickets #8–#10, and live model/Vanguard acceptance remain before the real maintenance demonstration.
 
 - Configure Vanguard for one human-selected offline logic/test change and a minimal set of tools. Use one-shot Vitest and lint as candidate checks, not the Sentry-enabled build or live-account integrations.
 - Record a local `main` commit and create a factory-owned worktree and branch from it using plain Git. Leave the existing checkout untouched; do not automatically fetch, pull, or create `dev`.

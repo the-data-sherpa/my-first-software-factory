@@ -220,9 +220,23 @@ Final verification under Node 24.21.0:
 The success case also deliberately changes source after completion to verify passive invalidation.
 Its baseline snapshots remain intact. The later changed workspace must not reuse those receipts as current readiness.
 
-The full suite includes all 184 baseline tests and 38 admission tests.
+The isolated implementation's full suite includes all 184 baseline tests and 38 admission tests.
 The temporary factory `node_modules` link used existing parent dependencies and was removed before commit.
 Documentation uses the strict technical-prose rules. Its local style check reports no banned-word hits.
+
+## Parent integration checkpoint
+
+The parent integrated the implementation and found a capability-reporting omission.
+Owner admission could initialize the selected production model but still reported `capabilities.productionModel: false`.
+A new application regression failed before correction and now confirms the enabled owner adapter reports true.
+The regression blocks source preparation and forbids execution dispatch, so it loads no credentials and sends no request.
+Controlled admission paths continue to report false. This field identifies enabled configuration, not live provider acceptance.
+
+Parent verification passed **223/223**, without exclusions or skips, and the browser regression passed **1/1**.
+Syntax, documentation links/anchors, whitespace, and unchanged dependency/runtime checks passed.
+The parent suite log is `/tmp/factory-ticket07-parent-full-suite.log`; browser results are in `/tmp/factory-ticket07-parent-browser.log`.
+All **104** scopes recorded by the parent's exact-owned harness were inactive with empty cgroups in `/tmp/factory-ticket07-parent-scope-audit.json`.
+Independent admission review is pending; these results are not final acceptance of the real Vanguard/model profile.
 
 ## Limits
 

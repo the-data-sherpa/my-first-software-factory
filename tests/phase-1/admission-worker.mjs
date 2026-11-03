@@ -180,6 +180,7 @@ try {
     else result = await terminal(admitted.id);
     assert.equal(result.outcome.reviewReady, false);
     assert.equal(result.capabilities.repositoryTools, false);
+    assert.equal(result.capabilities.productionModel, false); // Controlled transport is never an enabled owner adapter.
     assert.equal(result.deadlineAt, admitted.deadlineAt);
     if (['success', 'passive-profile', 'hidden-source'].includes(scenario)) {
       assert.equal(result.status, 'blocked');

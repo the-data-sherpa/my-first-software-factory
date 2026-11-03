@@ -173,7 +173,8 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
       ...(execution?.mode === 'admission-only' ? { admission: { version: 1, kind: execution.admissionKind,
         dependencyRunId, status: 'pending', readiness: 'not-ready', reviewReady: false } } : {}),
       capabilities: { repositoryTools: false,
-        productionModel: ['model-preflight', 'model-bounded-no-tools'].includes(execution?.mode),
+        productionModel: ['model-preflight', 'model-bounded-no-tools'].includes(execution?.mode)
+          || (execution?.mode === 'admission-only' && execution.admissionKind === 'owner'),
         resourceContainmentVerified: false },
       outcome: null,
     };

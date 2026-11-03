@@ -289,3 +289,19 @@ Syntax, documentation links/anchors, whitespace, and unchanged dependency/runtim
 The final exact-scope audit found all 67 recorded scopes inactive with empty cgroups.
 Manager failure plus owner loss, simultaneous backend/launcher death, and durable standalone recovery remain outside the established cleanup guarantees.
 Real agent execution stays disabled. Real Vitest/lint, Bun/Vanguard compatibility, live model acceptance, baseline health, and readiness qualification remain later gates.
+
+### Ticket #7 admission checkpoint
+
+[Ticket #7](implementation/ticket-07.md) now joins source, dependency, containment, model-preflight, and baseline checks through the application and CLI.
+The owner explicitly selects `serve --admit-agent` and names the preparation run with `start --dependency-run RUN_ID`.
+The new run retains its own original deadline and cumulative budget; the preparation run is not promoted or replenished.
+Fixed Vitest and lint checks run sequentially after the same-run bounded model smoke.
+Source and execution-profile changes invalidate evidence, and passive inspection never replays work.
+
+Passing gates records `blocked / EXECUTOR_NOT_IMPLEMENTED`, not maintenance success.
+Repository tools remain disabled, and controlled-fixture receipts cannot authorize the owner profile.
+The future executor must use the live opaque handoff and preserve original ownership and budgets.
+
+Parent review corrected a capability-reporting omission: the enabled owner admission adapter now reports `productionModel: true`, without claiming live provider acceptance. Controlled adapters report false.
+Parent verification passed **223/223**, with no exclusions or skips, plus the **1/1** browser regression.
+Independent admission review remains pending. Tickets #8–#10 and real model/Vanguard acceptance have not been performed.

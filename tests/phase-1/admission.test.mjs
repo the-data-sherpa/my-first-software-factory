@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { runOwnedScope, startForeground } from '../fixtures/containment-harness.mjs';
-import { openFactory, inspectHistory } from '../../src/factory.mjs';
+import { openFactory, inspectHistory, FactoryError } from '../../src/factory.mjs';
+import { until } from '../phase-0/helpers.mjs';
 import { createAdmissionExecution } from '../../src/admission.mjs';
 import { admitWorkspace, prepareWorkspace } from '../../src/workspace.mjs';
 
@@ -76,6 +77,26 @@ test('CLI crash after smoke remains interrupted on passive reopen and duplicate 
 test('controlled providers cannot accidentally attest to the owner admission profile', () => {
   assert.throws(() => createAdmissionExecution({ createRuntime: async () => ({}) }), { code: 'ADMISSION_CONFIGURATION' });
   assert.throws(() => createAdmissionExecution({ fixture: true }), { code: 'ADMISSION_CONFIGURATION' });
+});
+
+test('admission capability reports the selected owner adapter without claiming live acceptance', async () => {
+  const stateDir = await mkdtemp('/tmp/factory-admission-');
+  let factory;
+  try {
+    const owner = createAdmissionExecution();
+    factory = await openFactory({ stateDir, project: { id: 'vanguard', repositoryPath: `${stateDir}/unused-project` },
+      execution: { ...owner, start() { assert.fail('A missing source must not dispatch or initialize a model.'); } },
+      workspace: { admit() { throw new FactoryError('WORKSPACE_SOURCE', 'Controlled unavailable source.'); } } });
+    const admitted = await factory.startRun({ requestId: 'owner-capability', dependencyRunId: 'run_00000000-0000-0000-0000-000000000000',
+      brief: 'Goal: Inspect configuration\nAcceptance criteria: No model dispatch\nEvidence: Controlled unavailable source' });
+    assert.equal(admitted.capabilities.productionModel, true);
+    assert.equal(admitted.capabilities.repositoryTools, false);
+    assert.equal(admitted.capabilities.resourceContainmentVerified, false);
+    const blocked = await until(() => factory.inspectRun(admitted.id), run => run.status === 'blocked');
+    assert.equal(blocked.outcome.reason, 'WORKSPACE_SOURCE');
+    assert.equal(blocked.counters.modelAttempts, 0);
+    assert.equal(blocked.admission.readiness, 'not-ready');
+  } finally { await factory?.close(); await rm(stateDir, { recursive: true, force: true }); }
 });
 
 test('owner CLI opt-in serves and inspects without constructing a credential runtime', async t => {
