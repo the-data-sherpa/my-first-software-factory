@@ -276,7 +276,7 @@ See the [workspace implementation record](docs/implementation/ticket-04.md) for 
 ## Explicit dependency preparation
 
 Ticket #6 remains under review. Controlled preparation supports committed offline tarballs and a limited locked-registry grammar with transitive dependencies.
-Real Vanguard tooling is unverified. The reported descendant-cleanup failure also remains an execution gate.
+Real Vanguard tooling is unverified. Cleanup acceptance remains an execution gate while the separate preparation launcher is checked against the reproduced startup race.
 
 With a workspace-only backend inside the foreground resource scope, prepare an admitted run explicitly:
 
@@ -316,7 +316,8 @@ Repository Vitest/lint checks require a verified private dependency handle. With
 Controlled installed packages exercise this handoff and its read-only mounts, not real Vanguard test or lint compatibility.
 Production-model admission and agent tool registration remain later gates. No real Vanguard toolchain compatibility is claimed yet.
 See the [containment implementation record](docs/implementation/ticket-03.md) for verification evidence and host restrictions.
-A later #6 test exposed an intermittent descendant-cleanup failure. Investigation remains open, so real agent execution stays disabled.
+A later #6 test exposed an intermittent descendant-cleanup failure. The [cleanup correction](docs/implementation/containment-cleanup-correction.md) reproduces a startup race and adds verified namespace drainage plus foreground-owner-loss cleanup.
+The separate dependency installer still needs the corresponding startup-lifetime correction and combined verification. Real agent execution stays disabled.
 
 ## Build stages
 

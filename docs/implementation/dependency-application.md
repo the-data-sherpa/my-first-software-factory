@@ -1,7 +1,7 @@
 # Dependency preparation through the application
 
 This integration connects offline and locked-registry dependency preparation to retained application records and the separate CLI.
-Registry safety review and the reported containment cleanup failure remain open gates.
+Registry review identified a scoped-name substitution defect, now corrected. Combined cleanup acceptance remains an open gate.
 It does not enable real agent execution, claim Vanguard compatibility, or establish maintenance readiness.
 
 ## Explicit owner operation
@@ -108,10 +108,12 @@ All model credentials and transports remain controlled. No real credentials, Van
 Existing backup code rejects symbolic links, including Bun's validated `.bin` links, before creating a backup destination.
 Dependency-bundle backup/restore support is not claimed. Retain the original private state until explicit owner cleanup.
 After registry application wiring, the Phase 0/1 selection passed **145/145**, with no skips.
-That selection explicitly excluded `containment.test.mjs` and `containment-crash.test.mjs` while the cleanup failure remains under investigation.
+That selection explicitly excluded `containment.test.mjs` and `containment-crash.test.mjs` during the initial cleanup investigation.
 It still exercised the dependency preparation and run-tools OS fixtures.
 The browser recovery probe passed **1/1**.
 The lifecycle integration review found no concrete defects and passed **45/45** targeted tests plus two startup-drain failure probes.
 It excluded the registry implementation and new registry application worker from independent acceptance.
 After registry wiring, the dependency module and application suites passed **27/27**, with no skips.
-These are not full-suite acceptance results. Combined verification and independent registry review remain pending.
+Independent registry review then reproduced a scoped-name substitution. Root and nested-placement regressions now reject it before acquisition.
+After integrating the containment startup correction, the containment, registry, and dependency-application selection passed **38/38**, with no skips.
+These are not full-suite acceptance results. The separate dependency installer still needs the equivalent startup-lifetime correction, followed by combined verification.

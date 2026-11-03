@@ -170,4 +170,7 @@ The change does not authorize passive replay, replenish budgets, or grant mainte
 
 No real Vanguard access, credential/configuration reads, public downloads, model requests, tracker writes, or push occurred.
 Verification used existing dependencies and disposable local package fixtures.
-The parent's uncommitted integration is outside this checkout and still needs its combined verification.
+The parent's application integration was outside this implementation checkout.
+After integration, the parent containment, registry, and dependency-application selection passed **38/38**, with no skips.
+The separate `src/dependencies-process.mjs` launcher still uses the earlier outer-bwrap-only cancellation pattern.
+It needs equivalent startup-lifetime correction and regression evidence before full combined acceptance.

@@ -277,9 +277,11 @@ Ticket #6 supplies offline Bun preparation, explicit locked-registry acquisition
 The application now retains explicit preparation intent, receipts, cancellation, crash fencing, and the original budget.
 The CLI exposes that owner operation separately from start and agent tools.
 Registry fixtures cover transitive, scoped, and nested versions without giving Bun network access.
-The lifecycle integration review found no concrete defects. Independent registry review and combined verification remain pending.
-Its test run also exposed an intermittent descendant-cleanup failure. Later passes do not resolve that failure.
-Real agent execution stays disabled while that investigation remains open.
+The lifecycle integration review found no concrete defects. Independent registry review found a scoped-name substitution defect, now rejected before acquisition with root and nested-placement regressions.
+Its test run also exposed an intermittent descendant-cleanup failure. The [containment correction](implementation/containment-cleanup-correction.md) reproduced a startup race and added namespace drainage and foreground-owner-loss cleanup.
+The integrated containment, registry, and dependency-application selection passed **38/38**, with no skips.
+The separate dependency-preparation launcher still uses the earlier cancellation pattern and needs equivalent startup-lifetime verification and correction.
+Real agent execution stays disabled until that work and combined verification complete.
 
 Combined verification remains pending.
 Real Vitest/lint, Bun/Vanguard compatibility, live model acceptance, baseline health, and readiness qualification remain later gates.
