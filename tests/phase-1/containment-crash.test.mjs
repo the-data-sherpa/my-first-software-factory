@@ -1,40 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, execFile } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, rm, readdir, readFile, access } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { readdir, readFile, access } from 'node:fs/promises';
+import { startDiagnostic } from '../fixtures/containment-harness.mjs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { processIdentity, waitForCleanup } from '../../src/containment-process-fixtures.mjs';
 import { inspectContainedChecks } from '../../src/containment.mjs';
 
 const exec = promisify(execFile);
-const launcher = fileURLToPath(new URL('../../bin/factory-contained.mjs', import.meta.url));
 async function start(t, scenario) {
-  const directory = await mkdtemp('/tmp/factory-containment-');
-  const child = spawn(process.execPath, [launcher, 'diagnose', scenario, directory], { stdio: ['ignore', 'pipe', 'pipe'] });
-  let stderr = ''; child.stderr.on('data', (chunk) => { stderr += chunk; });
-  const finished = new Promise((resolve) => child.on('close', (code, signal) => resolve({ code, signal, stderr })));
-  let ready;
-  t.after(async () => {
-    if (ready) {
-      await exec('/usr/bin/systemctl', ['--user', 'stop', ready.envelope.unit]).catch(() => {});
-      await exec('/usr/bin/systemctl', ['--user', 'reset-failed', ready.envelope.unit]).catch(() => {});
-    }
-    child.kill('SIGKILL');
-    await finished;
-    await rm(directory, { recursive: true, force: true });
-  });
-  ready = await new Promise((resolve, reject) => {
-    let stdout = '';
-    const timer = setTimeout(() => reject(new Error(`No controlled ready receipt: ${stderr}`)), 8000);
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk;
-      if (stdout.includes('\n')) { clearTimeout(timer); resolve(JSON.parse(stdout.slice(0, stdout.indexOf('\n')))); }
-    });
-    child.on('close', () => { clearTimeout(timer); reject(new Error(`Diagnostic exited before ready: ${stderr}`)); });
-  });
-  return { directory, ready, finished };
+  const harness = await startDiagnostic(t, scenario);
+  return { directory: harness.directory, ready: await harness.ready(), finished: harness.finished };
 }
 async function interruptedReceipt(directory, name) {
   const checks = await readdir(`${directory}/receipts`);

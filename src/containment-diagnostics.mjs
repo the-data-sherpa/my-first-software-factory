@@ -5,10 +5,10 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { join } from 'node:path';
 import { createContainedExecution, createContainmentFixture, verifyContainmentEnvelope, ContainmentError } from './containment.mjs';
-import { processIdentity, observeDescendants, waitForCleanup } from './containment-process-fixtures.mjs';
+import { processIdentity, scopeProcesses, observeDescendants, waitForCleanup } from './containment-process-fixtures.mjs';
 
 export async function runContainmentDiagnostic(scenario, directory) {
-  if (!/^\/tmp\/factory-containment-[A-Za-z0-9]+$/.test(directory ?? '') || !['boundary', 'files', 'results', 'cleanup', 'resources', 'crash', 'memory', 'production'].includes(scenario)) {
+  if (!/^\/tmp\/factory-containment-[A-Za-z0-9]+$/.test(directory ?? '') || !['boundary', 'files', 'results', 'cleanup', 'cleanup-startup', 'startup-stop', 'resources', 'crash', 'memory', 'production'].includes(scenario)) {
     throw new ContainmentError('INVALID_DIAGNOSTIC', 'Choose a fixed diagnostic and disposable directory.');
   }
   const worktree = join(directory, 'work'); const receiptDirectory = join(directory, 'receipts');
@@ -43,6 +43,14 @@ export async function runContainmentDiagnostic(scenario, directory) {
       const changedEnvelope = await code(() => execution.read('source.txt'));
       return { fixtureCheck, checkArgs, preparedClaim, beforeDigest, afterDigest, snapshotLinkBlocked, redirectedRoot, changedEnvelope, receiptHidden };
     }
+    if (scenario === 'startup-stop') {
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      const close = () => { execution.close().catch(() => {}); };
+      process.once('SIGUSR1', abort); process.once('SIGUSR2', close);
+      try { return await execution.check('startup-stop', { signal: controller.signal }); }
+      finally { process.off('SIGUSR1', abort); process.off('SIGUSR2', close); }
+    }
     if (scenario === 'crash' || scenario === 'memory') {
       const backendIdentity = await processIdentity(process.pid);
       if (scenario === 'memory') {
@@ -63,6 +71,20 @@ export async function runContainmentDiagnostic(scenario, directory) {
       const observed = await observeDescendants(execution.envelope);
       const timeout = { ...await running, observed, survivors: await waitForCleanup(observed) };
       return { envelope: execution.envelope, pids, scratch, timeout, productionGate };
+    }
+    if (scenario === 'cleanup-startup') {
+      // Fixed timing sweep, not caller-selected code/argv or altered resource limits.
+      const results = [];
+      for (let timing = 0; timing < 40; timing++) {
+        const controller = new AbortController();
+        const running = execution.check('hang', { signal: controller.signal });
+        const timer = setTimeout(() => controller.abort(), timing);
+        try {
+          const result = await running;
+          results.push({ reason: result.reason, survivors: await waitForCleanup(await scopeProcesses(execution.envelope)) });
+        } finally { clearTimeout(timer); }
+      }
+      return { results };
     }
     if (scenario === 'cleanup') {
       const results = {};

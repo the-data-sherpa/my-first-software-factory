@@ -7,7 +7,7 @@ export async function processIdentity(pid) {
     const stat = await readFile(`/proc/${pid}/stat`, 'utf8');
     const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
     return { pid, state: fields[0], parentPid: Number(fields[1]), session: Number(fields[3]), startTime: fields[19] };
-  } catch (error) { if (error.code === 'ENOENT') return; throw error; }
+  } catch (error) { if (['ENOENT', 'ESRCH'].includes(error.code)) return; throw error; }
 }
 export async function scopeProcesses(envelope) {
   const pids = (await readFile(`/sys/fs/cgroup${envelope.cgroup}/cgroup.procs`, 'utf8')).trim().split('\n').filter(Boolean).map(Number);

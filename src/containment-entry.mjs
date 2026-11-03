@@ -1,6 +1,8 @@
 import { verifyContainmentEnvelope } from './containment.mjs';
+import { watchForegroundLauncher } from './containment-lifetime.mjs';
 
 try {
+  await watchForegroundLauncher();
   if (process.argv[2] === 'serve') { await verifyContainmentEnvelope(); await import('../bin/factory.mjs'); }
   else if (process.argv[2] === 'diagnose' && process.argv[3] === 'envelope') {
     process.stdout.write(`${JSON.stringify({ envelope: await verifyContainmentEnvelope() })}\n`);

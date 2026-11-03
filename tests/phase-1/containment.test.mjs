@@ -1,19 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { verifyContainmentEnvelope } from '../../src/containment.mjs';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
-
-const exec = promisify(execFile);
-const launcher = fileURLToPath(new URL('../../bin/factory-contained.mjs', import.meta.url));
-async function diagnose(t, scenario) {
-  const directory = await mkdtemp('/tmp/factory-containment-');
-  t.after(() => rm(directory, { recursive: true, force: true }));
-  const { stdout } = await exec(process.execPath, [launcher, 'diagnose', scenario, directory], { timeout: 30_000 });
-  return JSON.parse(stdout);
-}
+import { diagnose } from '../fixtures/containment-harness.mjs';
 
 // Agreed seam: factory-owned execution interface, with disposable OS fixtures.
 test('repository tools refuse an uncontained backend, even with an alleged receipt', async () => {
