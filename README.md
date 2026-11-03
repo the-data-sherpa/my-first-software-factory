@@ -322,7 +322,8 @@ Repository tools remain unavailable to an agent. An opaque, revalidated handoff 
 `capabilities.productionModel` identifies the enabled owner adapter, not successful live authentication or provider acceptance.
 
 Parent verification passed **223/223** tests with no exclusions or skips, plus the **1/1** browser regression.
-Independent admission review remains pending. No real Vanguard or production-model acceptance is claimed.
+Independent review found no concrete defects and passed **39/39** admission tests plus **2/2** focused boundary regressions.
+The parent accepted this controlled implementation checkpoint. No real Vanguard or production-model acceptance is claimed.
 See the [ticket #7 implementation record](docs/implementation/ticket-07.md) for interfaces, evidence, and recovery limits.
 
 ## Contained execution tools
@@ -346,7 +347,8 @@ See the [containment implementation record](docs/implementation/ticket-03.md) fo
 A later #6 test exposed an intermittent descendant-cleanup failure. The [cleanup correction](docs/implementation/containment-cleanup-correction.md) reproduces a startup race and adds verified namespace drainage plus foreground-owner-loss cleanup.
 The [preparation correction](docs/implementation/dependency-cleanup-correction.md) shares those namespace-lifetime rules with both installer stages and preserves failed-drain ownership through finalization and reporting errors.
 Final combined verification passed **184/184**, with no exclusions or skips, plus the **1/1** browser regression.
-Manager failure with owner loss and simultaneous backend/launcher death remain unverified recovery cases. Real agent execution stays disabled pending live model acceptance, real toolchain compatibility, and the later admission gates.
+Manager failure with owner loss and simultaneous backend/launcher death remain unverified recovery cases.
+Real agent execution stays disabled. The executor, readiness qualification, and live model/toolchain acceptance remain later gates.
 
 ## Build stages
 
@@ -384,7 +386,7 @@ The owner accepted direct integration in [ADR 0001](docs/adr/0001-embed-pi-durab
 
 ### 1. Complete one manual run
 
-The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including the minimal outcome-first baseline, then separately authorized implementation. Tickets #1–#6 supply the controlled foundation, and #7 joins the startup gates. Independent #7 review, tickets #8–#10, and live model/Vanguard acceptance remain before the real maintenance demonstration.
+The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including the minimal outcome-first baseline, then separately authorized implementation. Tickets #1–#6 supply the controlled foundation, and #7 joins the startup gates. The parent accepted #7 after independent review. Tickets #8–#10 and live model/Vanguard acceptance remain before the real maintenance demonstration.
 
 - Configure Vanguard for one human-selected offline logic/test change and a minimal set of tools. Use one-shot Vitest and lint as candidate checks, not the Sentry-enabled build or live-account integrations.
 - Record a local `main` commit and create a factory-owned worktree and branch from it using plain Git. Leave the existing checkout untouched; do not automatically fetch, pull, or create `dev`.

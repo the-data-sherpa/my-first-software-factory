@@ -236,7 +236,29 @@ Parent verification passed **223/223**, without exclusions or skips, and the bro
 Syntax, documentation links/anchors, whitespace, and unchanged dependency/runtime checks passed.
 The parent suite log is `/tmp/factory-ticket07-parent-full-suite.log`; browser results are in `/tmp/factory-ticket07-parent-browser.log`.
 All **104** scopes recorded by the parent's exact-owned harness were inactive with empty cgroups in `/tmp/factory-ticket07-parent-scope-audit.json`.
-Independent admission review is pending; these results are not final acceptance of the real Vanguard/model profile.
+These results do not establish acceptance of the real Vanguard/model profile.
+
+## Independent review and acceptance
+
+Independent review compared frozen checkpoint `e355ec6` with baseline `29292d4` and found no concrete correctness/safety defects or missing ticket #7 requirements.
+It covered evidence binding, lazy initialization, original budgets, handoff authority, passive recovery, cancellation, failure propagation, and CLI restrictions.
+
+Under Node 24.21.0, the reviewer passed **39/39** admission tests and **2/2** focused boundary regressions.
+The focused cases cover bundle-backed write/read-only reuse and the handled-drain fence.
+All **39** recorded scopes were inactive with no remaining processes.
+The reviewer did not repeat the full suite or browser regression.
+No source edits, credential discovery, Vanguard access, factory production-model calls, or public downloads occurred.
+
+Review evidence:
+
+- `/tmp/factory-ticket07-review-admission.log`
+- `/tmp/factory-ticket07-review-boundaries.log`
+- `/tmp/factory-ticket07-review-scopes.jsonl`
+- `/tmp/factory-ticket07-review-scope-audit.json`
+
+The parent accepted this controlled implementation checkpoint after its own verification and the independent review.
+Ticket #8 can now build on the live handoff. Qualification remains ticket #9, and the real demonstration remains ticket #10.
+This acceptance changes no tracker status and authorizes no live operation or push.
 
 ## Limits
 

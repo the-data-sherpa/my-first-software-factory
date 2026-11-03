@@ -304,4 +304,6 @@ The future executor must use the live opaque handoff and preserve original owner
 
 Parent review corrected a capability-reporting omission: the enabled owner admission adapter now reports `productionModel: true`, without claiming live provider acceptance. Controlled adapters report false.
 Parent verification passed **223/223**, with no exclusions or skips, plus the **1/1** browser regression.
-Independent admission review remains pending. Tickets #8–#10 and real model/Vanguard acceptance have not been performed.
+Independent review of checkpoint `e355ec6` found no concrete defects or missing ticket #7 acceptance requirements.
+It passed **39/39** admission tests and **2/2** focused boundary regressions, with **39/39** recorded scopes inactive and empty.
+The parent accepted the controlled #7 implementation after that review. Tickets #8–#10 and real model/Vanguard acceptance remain separate work.
