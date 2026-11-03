@@ -39,3 +39,11 @@ _Avoid_: Suggestion, plan, action
 **Approval**:
 A person's recorded decision to allow a proposal to be carried out. Approval applies to a proposal, never to a whole run.
 _Avoid_: Sign-off, confirmation
+
+**Meta-thread**:
+The owner-facing conversation for coordinating requirements, priorities, dependencies, and lead assignments.
+_Avoid_: Run, work item
+
+**Lead**:
+The agent accountable for one bounded maintenance outcome through the factory's workflow.
+_Avoid_: Meta-thread, work item

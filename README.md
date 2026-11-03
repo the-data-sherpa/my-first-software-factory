@@ -73,6 +73,26 @@ The web UI is an explicit Phase 2 deliverable. It can use a three-part layout:
 
 This is a design sketch, not a requirement to copy the video UI. The Phase 1 CLI does not replace the planned Phase 2 web workspace.
 
+## Longer-term direction: conversational coordination
+
+The owner approved this product direction on 2026-11-02:
+
+> The meta-thread coordinates what needs to happen; the Vanguard workflow owns how the work gets done.
+
+- **Meta-thread:** requirements, priorities, dependencies, lead assignments, and decisions that need the owner.
+- **Lead:** accountability for one bounded outcome through the factory's workflow.
+- **Workflow:** planning, execution, verification, and retained evidence.
+- **Completion report:** the achieved result, supporting evidence, unresolved work, and decisions needed.
+
+The meta-thread uses the factory application interface rather than duplicating the delivery workflow.
+Leads can report newly discovered dependencies so the meta-thread can adjust coordination.
+A finished lead thread can report a blocked, failed, or partial outcome. Thread completion alone does not prove success.
+The owner requests outcomes rather than assembling agent teams or prescribing each step.
+
+This is longer-term direction, not a Phase 1 scope change or implementation authorization.
+The accepted Phase 1 design and ten published tickets remain unchanged in scope.
+Transport, models, and coordination topology for this layer remain future decisions. Existing permissions and approval rules still apply.
+
 ## Proposed architecture
 
 ```text
