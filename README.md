@@ -2,9 +2,9 @@
 
 ## Status
 
-Phase 0 evaluation is complete, with runnable verification probes, [findings](docs/phase-0-findings.md), and an [accepted integration decision](docs/adr/0001-embed-pi-durable.md). This is not yet a working factory. Dependencies are pinned locally. No credentials, services, or schedules have been installed or changed.
+Phase 0 evaluation is complete, with runnable verification probes, [findings](docs/phase-0-findings.md), and an [accepted integration decision](docs/adr/0001-embed-pi-durable.md). Phase 1 ticket #1 now provides a tested, tool-free CLI/backend foundation and closed-store backup/restore. This is not yet a working maintenance factory. Dependencies and Node 24.21.0 are pinned locally. No credentials, services, or schedules have been installed or changed.
 
-The factory's job is repository maintenance, starting with [`vanguard`](https://github.com/the-data-sherpa/vanguard) as its first project. Vanguard replaces `crewroom` by the owner's decision on 2026-11-02. The restart gate passes for `@earendil-works/pi-durable` 1.5.0. The owner accepted direct embedding with SQLite and Pi's `ModelRuntime`, rather than adopting Durable Pi's applications. The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including outcome-first execution. A complexity classifier and specialist team are not required. Implementation has not started. Live inference with the owner's credentials remains unverified.
+The factory's job is repository maintenance, starting with [`vanguard`](https://github.com/the-data-sherpa/vanguard) as its first project. Vanguard replaces `crewroom` by the owner's decision on 2026-11-02. The restart gate passes for `@earendil-works/pi-durable` 1.5.0. The owner accepted direct embedding with SQLite and Pi's `ModelRuntime`, rather than adopting Durable Pi's applications. The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including outcome-first execution. A complexity classifier and specialist team are not required. The owner separately authorized ticket implementation. See [Running the controlled CLI](#running-the-controlled-cli) and the [implementation record](docs/phase-1-plan.md#implementation-record). Production-model availability and Vanguard execution remain unverified.
 
 Terms used in this plan are defined in [CONTEXT.md](CONTEXT.md). [ADR 0002](docs/adr/0002-one-factory-many-projects.md) records the owner's choice of one factory managing multiple projects, not a factory per project. Each run and work item belongs to one project.
 
@@ -123,6 +123,70 @@ The factory must record run state and make interruptions visible. Do not assume 
 - Set limits for run duration, model spend, concurrency, and scheduled execution. Phase 1 enforces operational limits and labels cost as reported, estimated, or unknown. It makes no hard billing-cap claim.
 - Show failed and interrupted runs. Provide a way to pause schedules and stop work.
 
+## Running the controlled CLI
+
+Ticket #1 supplies a tool-free fixture path, not a Vanguard maintenance run.
+Use Node 24.21.0, selected by the repository-local `.mise.toml` and package engine.
+No live model, credentials, repository tools, or package downloads are needed for this path.
+The normal backend refuses production execution until its later gates are implemented. It never substitutes a fixture.
+
+Start the explicit fixture backend in one terminal:
+
+```bash
+npm run factory -- serve --fixture
+```
+
+In another terminal, submit a text brief with all three sections:
+
+```bash
+npm run factory -- start --request-id fixture-demo-001 --brief-text 'Goal: Exercise retained run history.
+Acceptance criteria: Inspect the same result after reconnecting.
+Evidence: Controlled fixture context.'
+```
+
+Alternatively, use `--brief path/to/brief.md`. Markdown headings named `Goal`, `Acceptance criteria`, and `Evidence` are also accepted.
+The raw brief is snapshotted at admission and limited to 64 KiB of UTF-8 text.
+URLs remain citations; the factory does not fetch them.
+Reuse the same request ID and brief to retrieve the same run. Changed input with that ID is rejected.
+
+Replace `RUN_ID` below with the application's `run_…` identity returned by `start`, not the SDK submission ID:
+
+```bash
+npm run factory -- inspect RUN_ID
+npm run factory -- list
+npm run factory -- info
+```
+
+Closing the CLI leaves work with the foreground backend. Use Ctrl-C in the backend terminal to shut it down.
+Completed history remains available through `inspect` and `list` with the backend closed.
+A crashed run remains interrupted and blocks a new start. Explicit resume and retry controls belong to ticket #2.
+Fixture outcomes always have `reviewReady: false` and do not satisfy the real maintenance milestone.
+Stored limits describe the accepted profile; they do not prove production request or OS resource enforcement.
+
+State defaults to `~/.local/state/tiny-software-factory`, outside the public repository.
+Use `--state-dir DIRECTORY` consistently on all commands to select another private location.
+Directories and files are owner-only. The backend listens only on its private Unix socket, not a TCP port.
+
+After shutting down the backend, back up and restore closed stores:
+
+```bash
+npm run factory -- backup --to "$HOME/.local/state/tiny-factory-backup-001"
+npm run factory -- restore --from "$HOME/.local/state/tiny-factory-backup-001" \
+  --state-dir "$HOME/.local/state/tiny-factory-restored-001"
+npm run factory -- inspect RUN_ID --state-dir "$HOME/.local/state/tiny-factory-restored-001"
+```
+
+Backup and restore destinations must be new, private directories outside Git repositories.
+Backups retain factory records and per-run execution files, including committed WAL data, with storage versions and SHA-256 digests.
+SQLite rebuilds shared-memory indexes; backups exclude those indexes and backend control files.
+Backup and restore verify actual execution schema compatibility, not just the manifest's declarations.
+Restore verifies the inventory and digests before copying. Existing state is never overwritten.
+Backups contain private task briefs and transcripts. Keep them private; cleanup remains an explicit owner operation.
+These checks cover process crashes, not host or power failure guarantees.
+
+Run the combined unit/integration suite with `npm test`, or select `npm run test:phase0` and `npm run test:phase1`.
+The original browser probe remains available through `CHROMIUM_PATH=/usr/bin/chromium npm run test:ui`.
+
 ## Build stages
 
 ### 0. Choose a job and examine Durable Pi
@@ -159,7 +223,7 @@ The owner accepted direct integration in [ADR 0001](docs/adr/0001-embed-pi-durab
 
 ### 1. Complete one manual run
 
-The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including the minimal outcome-first baseline. Implementation requires a separate go-ahead.
+The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including the minimal outcome-first baseline, then separately authorized implementation. Ticket #1 supplies the controlled CLI/storage foundation. The remaining tickets are required for the real maintenance demonstration.
 
 - Configure Vanguard for one human-selected offline logic/test change and a minimal set of tools. Use one-shot Vitest and lint as candidate checks, not the Sentry-enabled build or live-account integrations.
 - Record a local `main` commit and create a factory-owned worktree and branch from it using plain Git. Leave the existing checkout untouched; do not automatically fetch, pull, or create `dev`.
@@ -206,8 +270,8 @@ The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-1
 
 - **Agent foundation:** `@earendil-works/pi-durable` 1.5.0, matching the local `pi` 1.5.0 installation, accepted in ADR 0001.
 - **Models:** `openai/gpt-6.1-sol` initially, until the web UI, using Pi's existing model and credential integration. Do not substitute Codex, OpenRouter, or `local-ai-auto`. Authentication and live availability remain unverified; preflight failure blocks execution rather than triggering a fallback.
-- **Application:** TypeScript and Node.js, as required by `pi-durable`. The owner selected Node 24.21.0 as this repository's runtime for Phase 1 after the existing unit/integration probes passed. Applying the local pin remains implementation work; do not change global runtime settings.
-- **Storage:** SQLite, with a factory-level record store and per-run durable execution stores as selected in ADR 0005. The logical application schema remains implementation work.
+- **Application:** Node.js ES modules, using the repository's `.mjs` style. Ticket #1 applies the selected Node 24.21.0 pin through `.mise.toml`, the package engine, and the CLI version check. Global runtime settings remain unchanged.
+- **Storage:** SQLite, with a factory-level record store and per-run durable execution stores as selected in ADR 0005. Ticket #1 records storage versions, enforces native read-only execution inspection, and verifies closed-store backup/restore.
 - **Interface:** Phase 1 CLI with a foreground backend; a web workspace in Phase 2.
 - **Scheduling:** A scheduler built into the backend. `pi-durable` has none.
 - **Execution:** Plain-Git worktrees, limited read/edit tools, and a fixed-command sandboxed check runner. Verified containment is mandatory before Phase 1 repository tools; its actual Vanguard profile remains unvalidated.

@@ -3,10 +3,13 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.19.0"
+    "node": "24.21.0"
   },
   "scripts": {
-    "test": "node --test --test-concurrency=1 tests/phase-0/*.test.mjs",
+    "factory": "node bin/factory.mjs",
+    "test": "node --test --test-concurrency=1 tests/phase-0/*.test.mjs tests/phase-1/*.test.mjs",
+    "test:phase0": "node --test --test-concurrency=1 tests/phase-0/*.test.mjs",
+    "test:phase1": "node --test --test-concurrency=1 tests/phase-1/*.test.mjs",
     "phase0:credentials": "node scripts/phase-0/check-credentials.mjs",
     "test:ui": "node --test tests/ui/phase-0.test.mjs"
   },

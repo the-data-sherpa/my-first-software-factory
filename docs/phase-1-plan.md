@@ -6,7 +6,7 @@ accepted: 2026-11-02
 # Phase 1 design
 
 The owner confirmed the complete shared Phase 1 design in Q29 on 2026-11-02, including the outcome-first clarification in Q28.
-The design interview is complete. Implementation and live inference still require separate authorization.
+The design interview is complete. The owner later separately authorized ticket implementation. Production-model requests and the actual Vanguard maintenance run remain separate from controlled implementation checks.
 The owner defines the desired result and constraints; the factory owns planning and execution. Specialist routing remains a possible technique, not a Phase 1 requirement.
 Remaining runtime checks below are implementation gates, not claims of completed verification.
 Terms follow [CONTEXT.md](../CONTEXT.md). [ADR 0001](adr/0001-embed-pi-durable.md) supplies the accepted runtime foundation. [ADR 0002](adr/0002-one-factory-many-projects.md) records one factory managing multiple projects. [ADR 0003](adr/0003-contain-repository-tools-in-phase-1.md) requires verified containment before Phase 1 repository tools. [ADR 0004](adr/0004-operator-controlled-recovery.md) requires operator-controlled recovery. [ADR 0005](adr/0005-isolate-execution-stores-per-run.md) isolates durable execution stores per run.
@@ -207,5 +207,25 @@ Publication does not start implementation or authorize live inference.
 9. [#9: Qualify a work item using evidence, not the model's claim](https://github.com/the-data-sherpa/my-first-software-factory/issues/9)
 10. [#10: Complete the first real Vanguard maintenance run](https://github.com/the-data-sherpa/my-first-software-factory/issues/10)
 
-Only #1 has no blockers. After it completes, #2, #3, and #4 can proceed in parallel.
-Use a common committed baseline before isolated implementation worktrees; the current planning and Phase 0 work remains uncommitted.
+Implementation starts with #1. After it completes, #2, #3, and #4 can proceed in parallel.
+Use a common committed baseline before isolated implementation worktrees.
+
+### Implementation record
+
+Ticket #1 is implemented and verified locally as of 2026-11-03. It supplies the foreground backend, separate CLI, immutable admission snapshots, private application and per-run execution stores, stable request IDs, lifetime ownership, passive inspection, and closed-store backup/restore. It applies the repository-local Node 24.21.0 pin and preserves the Phase 0 probes.
+
+The independent reliability review found three defects, all corrected with regressions:
+
+- The SDK SQLite opener ignores a `readOnly` option. The execution adapter now uses native read-only connections, validates the pinned schema, and refuses migrations. It preserves committed WAL receipts rather than ignoring them.
+- A cancellation/SDK-close race could release ownership before finalization. Shutdown now drains the job before releasing the owner lock.
+- Backup and restore trusted declared execution versions without validating the stores. Both now check the actual schema and retained receipt identity.
+
+Additional regressions cover compact `Goal:Text` brief fields and redirected run directories. CLI brief reads loop to EOF or the byte limit. Offline inspection acquires ownership before treating a store as closed. Backup excludes rebuildable SQLite shared-memory indexes and verifies repeated restoration of an interrupted run, including its WAL receipt, through CLI inspection.
+
+Verification used Node 24.21.0:
+
+- `npm test`: **37/37 passed** (11 Phase 0 and 26 Phase 1 tests).
+- `CHROMIUM_PATH=/usr/bin/chromium npm run test:ui`: **1/1 passed**.
+- JavaScript syntax checks and `git diff --check` passed. Dependencies and the lock graph are unchanged.
+
+These checks use controlled providers and disposable state. A fixture completion is not maintenance success and always records `reviewReady: false`. Stop/resume controls, production-model preflight, repository containment and resource enforcement, exact-source worktrees, dependency preparation, draft production, and readiness qualification remain in tickets #2–#10. No factory production-model request or Vanguard execution was performed.
