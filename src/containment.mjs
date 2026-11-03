@@ -309,7 +309,15 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
     close() {
       return closing ??= (async () => {
         closed = true; shutdown.abort();
-        try { await current; } finally { await root.close(); await retained.close(); }
+        try { await current; }
+        finally {
+          try { await root.close(); await retained.close(); }
+          finally {
+            // An executor may handle a tool error after `current` is cleared.
+            // Finalization must still preserve the backend's failed-drain fence.
+            if (namespaceFenced()) fail('DRAIN_FAILED', 'Sandbox cleanup remains unconfirmed. Backend ownership must remain fenced.');
+          }
+        }
       })();
     },
   };

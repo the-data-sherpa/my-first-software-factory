@@ -6,7 +6,17 @@ import { syncBuiltinESMExports } from 'node:module';
 import { promisify } from 'node:util';
 import { readFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
+import { StatementSync } from 'node:sqlite';
 const [root, owner] = process.argv.slice(2);
+const runStatement = StatementSync.prototype.run;
+let failNextWrite = false;
+StatementSync.prototype.run = function (...args) {
+  if (failNextWrite) {
+    failNextWrite = false;
+    throw Object.assign(new Error('Injected transient persistence failure'), { code: 'SQLITE_IOERR' });
+  }
+  return runStatement.apply(this, args);
+};
 const execFile = childProcess.execFile; const kill = process.kill;
 let deny = false; let sandbox; const scopeKills = []; const deniedPids = [];
 childProcess.execFile = (command, args, ...tail) => {
@@ -24,7 +34,7 @@ injectedExecFile[promisify.custom] = (...args) => new Promise((resolve, reject) 
 syncBuiltinESMExports();
 // Import after instrumentation, including modules that promisify execFile.
 const { dependencyFixture } = await import('../../src/dependencies-diagnostics.mjs');
-const { prepareOwnerDependencies, dependencyDirectory, serializeDependencyError } = await import('../../src/dependencies.mjs');
+const { admitDependencies, prepareDependencies, prepareOwnerDependencies, dependencyDirectory, serializeDependencyError } = await import('../../src/dependencies.mjs');
 const { verifyContainmentEnvelope } = await import('../../src/containment.mjs');
 const { stopPreparationStartup } = await import('../../src/containment-startup-fixture.mjs');
 const { acquireOwner } = await import('../../src/storage.mjs');
@@ -54,20 +64,35 @@ try {
     const { openFactory } = await import('../../src/factory.mjs');
     const { admitWorkspace, prepareWorkspace } = await import('../../src/workspace.mjs');
     factory = await openFactory({ stateDir: f.workspaceIntent.stateDir, project: { id: 'vanguard', repositoryPath: f.repositoryPath },
-      workspace: { admit: admitWorkspace, prepare: prepareWorkspace } });
+      workspace: { admit: admitWorkspace, prepare: prepareWorkspace },
+      dependencyPreparation: {
+        admit: admitDependencies,
+        async prepare(...args) {
+          try { return await prepareDependencies(...args); }
+          catch (error) {
+            // Fail one storage mutation after the real preparation reports failed
+            // drainage. Assertions remain at the application/ownership interfaces.
+            if (owner === 'application-persistence' && error.code === 'DRAIN_FAILED') failNextWrite = true;
+            throw error;
+          }
+        },
+      } });
     const brief = 'Goal: Test preparation drainage.\nAcceptance criteria: Retain ownership on failure.\nEvidence: Disposable OS fixture.';
     const run = await factory.startRun({ requestId: 'drain-source', brief });
     while ((await factory.inspectRun(run.id)).status !== 'blocked') await delay(5);
     await factory.prepareDependencies(run.id, { bunPath: '/home/cowen/.bun/bin/bun' });
     ready = await fault.ready; sandbox = ready.observed[1]; deny = true;
-    await assert.rejects(factory.stopRun(run.id), { code: 'DRAIN_FAILED' });
+    let stopFailure;
+    await assert.rejects(factory.stopRun(run.id), (error) => { stopFailure = error; return error.code === 'DRAIN_FAILED'; });
     const retained = await factory.inspectRun(run.id);
     assert.equal(retained.status, 'interrupted');
     assert.equal(retained.outcome.reason, 'drain_failed');
-    assert.equal(retained.dependencies.failure.code, 'DRAIN_FAILED');
+    if (owner === 'application-persistence') assert.equal(retained.dependencies.failure, undefined);
+    else assert.equal(retained.dependencies.failure.code, 'DRAIN_FAILED');
     await assert.rejects(factory.startRun({ requestId: 'cannot-overlap', brief }), { code: 'RUN_ACTIVE' });
     await assert.rejects(factory.close(), { code: 'DRAIN_FAILED' });
-    result = { status: retained.status, reason: retained.outcome.reason, failure: retained.dependencies.failure };
+    result = { status: retained.status, reason: retained.outcome.reason,
+      failure: retained.dependencies.failure ?? { code: stopFailure.code }, failureRecordUnavailable: !retained.dependencies.failure };
   }
   await assert.rejects(acquireOwner(f.workspaceIntent.stateDir), { code: 'BACKEND_OWNED' });
   await assert.rejects(verifyContainmentEnvelope(), { code: 'CONTAINMENT_REQUIRED' });
@@ -78,7 +103,7 @@ try {
 } finally {
   // Test-owned teardown only, after assertions. Production never releases this
   // fence or retries failed drainage. The outer harness still owns the whole scope.
-  deny = false; process.kill = kill; childProcess.execFile = execFile; syncBuiltinESMExports();
+  deny = false; process.kill = kill; childProcess.execFile = execFile; StatementSync.prototype.run = runStatement; syncBuiltinESMExports();
   if (ready) {
     for (const identity of [...ready.observed].reverse()) {
       if ((await livingProcesses([identity])).length) kill(identity.pid, 'SIGKILL');

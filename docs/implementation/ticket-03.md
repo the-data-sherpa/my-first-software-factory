@@ -241,7 +241,8 @@ This is not a VM boundary or a defense against a compromised kernel or a hostile
 The factory code, launcher, system toolchain, and ownership records are trusted host inputs.
 The agent controls source text, not those inputs or retained receipts.
 
-Real Bun/Vitest/lint compatibility, private dependency preparation, model admission, and Vanguard execution remain unverified and blocked.
+Real Bun/Vitest/lint compatibility, model admission, and Vanguard execution remain unverified and blocked.
+Ticket #6 now verifies private dependency preparation and read-only reuse with controlled packages, not the real tool distributions.
 The implementation does not claim completion of the real Phase 1 maintenance run.
 
 ## Parent integration
@@ -260,3 +261,11 @@ The trusted caller must join `close()` before returning from failed startup or f
 Integration tests use disposable exact-source Git workspaces inside the accepted foreground resource envelope.
 They verify hidden Git/control metadata, budget continuity, source-bound check receipts, retained draft writes, and stop drainage through the application.
 Actual Vitest/lint, model-driven tool registration, and production safe-resume assessment remain later execution-adapter work.
+
+## Later namespace-lifetime corrections
+
+Ticket #6 testing exposed a surviving namespace during cleanup. The [containment correction](containment-cleanup-correction.md) reproduced the startup failure mechanism rather than treating passing reruns as resolution.
+The [preparation correction](dependency-cleanup-correction.md) shares verified namespace drainage across checks and both installer stages.
+Mandatory close also retains a failed-drain fence after an executor handles the check error.
+Final parent verification passed **184/184**, with no exclusions or skips, plus the **1/1** browser regression.
+This does not establish cleanup after simultaneous backend/launcher death, manager failure plus owner loss, or host/kernel failure.

@@ -1,7 +1,7 @@
 # Dependency preparation through the application
 
 This integration connects offline and locked-registry dependency preparation to retained application records and the separate CLI.
-Registry review identified a scoped-name substitution defect, now corrected. Combined cleanup acceptance remains an open gate.
+Registry review identified a scoped-name substitution defect, now corrected. The full controlled integration suite passes after namespace-lifetime and failed-drain corrections.
 It does not enable real agent execution, claim Vanguard compatibility, or establish maintenance readiness.
 
 ## Explicit owner operation
@@ -116,4 +116,8 @@ It excluded the registry implementation and new registry application worker from
 After registry wiring, the dependency module and application suites passed **27/27**, with no skips.
 Independent registry review then reproduced a scoped-name substitution. Root and nested-placement regressions now reject it before acquisition.
 After integrating the containment startup correction, the containment, registry, and dependency-application selection passed **38/38**, with no skips.
-These are not full-suite acceptance results. The separate dependency installer still needs the equivalent startup-lifetime correction, followed by combined verification.
+Those earlier selections were not full-suite acceptance results.
+The subsequent [preparation cleanup correction](dependency-cleanup-correction.md) covers both installer stages and shares namespace-lifetime rules with checks.
+Parent review added a regression for a transient persistence error while reporting failed drainage; the application now preserves its ownership fence even when that report cannot be saved.
+Final combined verification passed **184/184**, with no exclusions or skips, plus the **1/1** browser regression.
+This establishes the controlled checkpoint, not live model acceptance, real toolchain compatibility, or recovery guarantees after manager failure plus owner loss.

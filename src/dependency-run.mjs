@@ -61,13 +61,20 @@ export async function prepareRunDependencies({ get, save, stateDir, signal, depe
     delete record.dependencies.failure;
     save(record); // A later executor must see the saved receipt, not a caller's prepared flag.
   } catch (error) {
-    record = get();
-    record.dependencies.status = 'failed';
-    record.dependencies.failure = error?.code === 'CONTAINMENT_REQUIRED'
-      ? { code: 'CONTAINMENT_REQUIRED', message: 'Dependency preparation requires the verified foreground resource scope. No fallback was attempted.' }
-      : serializeDependencyError(error);
-    save(record);
-    if (error instanceof FactoryError || ['MODEL_DRAIN_FAILED', 'DRAIN_FAILED'].includes(error?.code)) throw error;
+    const drainFailed = ['MODEL_DRAIN_FAILED', 'DRAIN_FAILED'].includes(error?.code);
+    try {
+      record = get();
+      record.dependencies.status = 'failed';
+      record.dependencies.failure = error?.code === 'CONTAINMENT_REQUIRED'
+        ? { code: 'CONTAINMENT_REQUIRED', message: 'Dependency preparation requires the verified foreground resource scope. No fallback was attempted.' }
+        : serializeDependencyError(error);
+      save(record);
+    } catch (receiptError) {
+      // Reporting failure cannot turn uncertain drainage into an ordinary failure
+      // and release the application's live ownership fence.
+      if (!drainFailed) throw receiptError;
+    }
+    if (error instanceof FactoryError || drainFailed) throw error;
     throw new FactoryError(record.dependencies.failure.code, record.dependencies.failure.message);
   }
 }

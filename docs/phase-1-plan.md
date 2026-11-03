@@ -266,7 +266,7 @@ Final combined verification under Node 24.21.0:
 - Package files, the dependency graph, and the runtime pin are unchanged.
 - The transient test scopes have stopped. No installed service or global configuration change remains.
 
-### Tickets #5 and #6 in progress
+### Tickets #5 and #6 controlled integration
 
 Ticket #5 now supplies bounded selected-model requests and an explicit no-tool CLI smoke operation.
 Its independent safety review found a startup-drain ownership defect and a disposable-home test mismatch.
@@ -280,8 +280,12 @@ Registry fixtures cover transitive, scoped, and nested versions without giving B
 The lifecycle integration review found no concrete defects. Independent registry review found a scoped-name substitution defect, now rejected before acquisition with root and nested-placement regressions.
 Its test run also exposed an intermittent descendant-cleanup failure. The [containment correction](implementation/containment-cleanup-correction.md) reproduced a startup race and added namespace drainage and foreground-owner-loss cleanup.
 The integrated containment, registry, and dependency-application selection passed **38/38**, with no skips.
-The separate dependency-preparation launcher still uses the earlier cancellation pattern and needs equivalent startup-lifetime verification and correction.
-Real agent execution stays disabled until that work and combined verification complete.
+The [preparation correction](implementation/dependency-cleanup-correction.md) then shared verified namespace drainage with both installer stages.
+Parent review also corrected a handled-check failure that disappeared during close and a persistence error that masked preparation drainage failure.
+Both new regressions failed before their corrections.
 
-Combined verification remains pending.
-Real Vitest/lint, Bun/Vanguard compatibility, live model acceptance, baseline health, and readiness qualification remain later gates.
+Final combined verification under Node 24.21.0 passed **184/184**, with no exclusions or skips, plus the **1/1** browser regression.
+Syntax, documentation links/anchors, whitespace, and unchanged dependency/runtime checks passed.
+The final exact-scope audit found all 67 recorded scopes inactive with empty cgroups.
+Manager failure plus owner loss, simultaneous backend/launcher death, and durable standalone recovery remain outside the established cleanup guarantees.
+Real agent execution stays disabled. Real Vitest/lint, Bun/Vanguard compatibility, live model acceptance, baseline health, and readiness qualification remain later gates.

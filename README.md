@@ -275,8 +275,8 @@ See the [workspace implementation record](docs/implementation/ticket-04.md) for 
 
 ## Explicit dependency preparation
 
-Ticket #6 remains under review. Controlled preparation supports committed offline tarballs and a limited locked-registry grammar with transitive dependencies.
-Real Vanguard tooling is unverified. Cleanup acceptance remains an execution gate while the separate preparation launcher is checked against the reproduced startup race.
+Ticket #6 provides controlled preparation for committed offline tarballs and a limited locked-registry grammar with transitive dependencies.
+The full controlled integration suite passes, including startup cleanup for both preparation sandboxes. Real Vanguard tooling remains unverified.
 
 With a workspace-only backend inside the foreground resource scope, prepare an admitted run explicitly:
 
@@ -317,7 +317,9 @@ Controlled installed packages exercise this handoff and its read-only mounts, no
 Production-model admission and agent tool registration remain later gates. No real Vanguard toolchain compatibility is claimed yet.
 See the [containment implementation record](docs/implementation/ticket-03.md) for verification evidence and host restrictions.
 A later #6 test exposed an intermittent descendant-cleanup failure. The [cleanup correction](docs/implementation/containment-cleanup-correction.md) reproduces a startup race and adds verified namespace drainage plus foreground-owner-loss cleanup.
-The separate dependency installer still needs the corresponding startup-lifetime correction and combined verification. Real agent execution stays disabled.
+The [preparation correction](docs/implementation/dependency-cleanup-correction.md) shares those namespace-lifetime rules with both installer stages and preserves failed-drain ownership through finalization and reporting errors.
+Final combined verification passed **184/184**, with no exclusions or skips, plus the **1/1** browser regression.
+Manager failure with owner loss and simultaneous backend/launcher death remain unverified recovery cases. Real agent execution stays disabled pending live model acceptance, real toolchain compatibility, and the later admission gates.
 
 ## Build stages
 

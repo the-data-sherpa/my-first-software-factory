@@ -172,5 +172,7 @@ No real Vanguard access, credential/configuration reads, public downloads, model
 Verification used existing dependencies and disposable local package fixtures.
 The parent's application integration was outside this implementation checkout.
 After integration, the parent containment, registry, and dependency-application selection passed **38/38**, with no skips.
-The separate `src/dependencies-process.mjs` launcher still uses the earlier outer-bwrap-only cancellation pattern.
-It needs equivalent startup-lifetime correction and regression evidence before full combined acceptance.
+The later [preparation correction](dependency-cleanup-correction.md) moved these namespace-lifetime rules into a shared helper and applied them to both preparation sandboxes.
+Parent review added a handled-check-error regression: mandatory close must still reject an unconfirmed drain after the operation has settled.
+Final parent verification passed **184/184**, with no exclusions or skips, and the browser regression passed **1/1**.
+The recovery limits above remain unchanged.

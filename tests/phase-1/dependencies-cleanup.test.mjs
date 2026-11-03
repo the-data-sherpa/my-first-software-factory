@@ -86,7 +86,7 @@ test('owner preparation startup cancellation sweeps both sandbox stages before a
   assert.equal(results.length, 16);
   assert.ok(results.every((result) => result.reason === 'DEPENDENCIES_ABORTED' && result.survivors.length === 0));
 });
-for (const owner of ['standalone', 'application']) {
+for (const owner of ['standalone', 'application', 'application-persistence']) {
   test(`${owner}: failed namespace and scope drainage retains live ownership and the DRAIN_FAILED fence`, async (t) => {
     const root = await mkdtemp('/tmp/factory-dependencies-');
     t.after(() => removeFixture(root));
@@ -97,7 +97,8 @@ for (const owner of ['standalone', 'application']) {
     assert.equal(result.failure.code, 'DRAIN_FAILED');
     assert.equal(result.ownerRetained, true); assert.equal(result.executionFenced, true);
     assert.deepEqual(result.scopeKills, [terminal.unit]);
-    if (owner === 'application') { assert.equal(result.status, 'interrupted'); assert.equal(result.reason, 'drain_failed'); }
+    if (owner.startsWith('application')) { assert.equal(result.status, 'interrupted'); assert.equal(result.reason, 'drain_failed'); }
+    if (owner === 'application-persistence') assert.equal(result.failureRecordUnavailable, true);
   });
 }
 test('preparation harness timeout before ready drains its announced exact scope', async (t) => {

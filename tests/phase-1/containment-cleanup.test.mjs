@@ -1,7 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { diagnose, startDiagnostic, ownedProcesses } from '../fixtures/containment-harness.mjs';
+import { diagnose, startDiagnostic, ownedProcesses, runOwnedScope } from '../fixtures/containment-harness.mjs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { waitForCleanup } from '../../src/containment-process-fixtures.mjs';
+
+test('handled check drainage failure remains fenced through mandatory close', async (t) => {
+  const root = await mkdtemp('/tmp/factory-containment-');
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const worker = fileURLToPath(new URL('../fixtures/containment-drain-fault.mjs', import.meta.url));
+  const terminal = await runOwnedScope(t, [worker, root], { timeout: 10000 });
+  assert.equal(terminal.code, 0, terminal.stderr);
+  assert.deepEqual(JSON.parse(terminal.stdout), { closeFenced: true, scopeKills: [terminal.unit] });
+});
 
 test('startup cancellation drains the namespace before returning at every fixed timing offset', async (t) => {
   const result = await diagnose(t, 'cleanup-startup', 3000);

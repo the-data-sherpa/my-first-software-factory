@@ -125,7 +125,7 @@ NODE=/home/cowen/.local/share/mise/installs/node/24.21.0/bin/node
 "$NODE" --test --test-name-pattern='owner abort at a stopped' \
   tests/phase-1/dependencies-cleanup.test.mjs
 
-# All 17 preparation cleanup regressions, including the fixed 16-case timing sweep.
+# Preparation cleanup regressions, including the fixed 16-case timing sweep.
 "$NODE" --test tests/phase-1/dependencies-cleanup.test.mjs
 
 # Independent-scope containment loops, with their original three-second watchdog.
@@ -137,7 +137,7 @@ NODE=/home/cowen/.local/share/mise/installs/node/24.21.0/bin/node
 CHROMIUM_PATH=/usr/bin/chromium "$NODE" --test tests/ui/phase-0.test.mjs
 ```
 
-Results:
+Results at the isolated implementation checkpoint:
 
 - Baseline stopped-startup reproduction: **2/2 failed**, both with outer exit and surviving namespace PID 1.
 - Corrected preparation cleanup suite: **17/17 passed**.
@@ -177,9 +177,30 @@ Recovery after manager failure plus owner loss therefore still needs trusted ext
 Durable reconciliation for that combination would require a separate design and changes outside this slice's ownership.
 This correction does not claim to close that larger gap.
 
-The existing shared implementation documents still describe preparation cleanup as pending.
-They were outside this slice's file ownership. The parent can update those checkpoints after independent combined validation.
-No required application-code change was found for propagation of `DRAIN_FAILED`.
+## Parent integration corrections and final verification
+
+The parent integrated this correction and independently ran the full suite: **182/182 passed**.
+Further review found two failure-propagation defects. Both failed new regressions before correction:
+
+- A handled check failure cleared the current operation. A later `close()` then succeeded despite an unconfirmed namespace drain. Finalization now checks the persistent backend namespace fence and rejects repeated close calls with `DRAIN_FAILED`.
+- A transient write failure while recording the application's dependency error replaced `DRAIN_FAILED`. During stop, this allowed a stopped result despite surviving work. `src/dependency-run.mjs` now preserves a drainage failure even when its error report cannot be saved. The outer application retains `interrupted / drain_failed`, rejects another start, and refuses shutdown.
+
+The first regression denies namespace and scope signals in a disposable process, handles the check error, and calls the real contained interface's `close()`.
+The second adds one injected SQLite mutation failure after actual preparation reports failed drainage.
+Its assertions use the factory's stop, inspect, start, close, and ownership interfaces, not private SQL contents.
+The missing dependency failure record remains missing; the application does not fabricate persistence.
+These are controlled failure-propagation tests, not claims about a naturally observed manager or disk outage.
+
+Final parent verification under Node 24.21.0:
+
+- Full `npm test`: **184/184 passed**, with no exclusions or skips.
+- Browser regression: **1/1 passed**.
+- JavaScript syntax, documentation links/anchors, whitespace, and unchanged dependency/runtime checks passed.
+- All **67** scopes recorded by the exact-owned cleanup harness during the final suite were inactive with empty cgroups in a separate audit.
+
+Parent evidence: `/tmp/factory-parent-final-suite.log`, `/tmp/factory-parent-final-browser.log`,
+`/tmp/factory-parent-final-scopes.jsonl`, and `/tmp/factory-parent-final-scope-audit.json`.
+The shared implementation documents now describe this verified checkpoint and the remaining live/toolchain/recovery limits.
 
 No real Vanguard source, credential/configuration file, public endpoint, live model, persistent service, or global setting was accessed or changed.
 All repositories, package archives, script sentinels, and registry responses were controlled fixtures.

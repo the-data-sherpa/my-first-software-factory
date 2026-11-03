@@ -183,7 +183,8 @@ The boundary diagnostic separately proves that the dependency mount rejects writ
 ## Preparation boundary
 
 Preparation uses direct Node-to-bubblewrap launch inside the verified foreground scope.
-The launcher observes the actual child PID, parent, start time, and cgroup before releasing its startup pipe.
+The shared namespace-lifetime helper verifies the outer launcher and namespace PID 1, including parent, start time, cgroup, and namespace identity, before releasing the startup pipe.
+It joins namespace death and pipe closure before returning. Namespace information uses fd 6; bundle export remains on fd 5.
 Bubblewrap uses parent-death termination, private PID/network namespaces, and the existing seccomp network denial.
 
 Only these inputs enter the sandbox:
@@ -457,11 +458,15 @@ The parser now compares complete package names at placements and requires each r
 Both cases reject before acquisition with zero requests. Supported scoped and nested graphs still install and pass their controlled checks.
 
 After this correction and the containment integration, **38/38** tests passed across the containment, registry, and dependency-application suites, with no skips.
-This is targeted verification, not complete containment acceptance.
+That selection was targeted verification, not complete containment acceptance.
+
+The subsequent [preparation correction](dependency-cleanup-correction.md) covers both installer stages, preserves live ownership on unconfirmed drainage, and hardens exact-scope test teardown.
+Parent review also preserved the drain fence through handled check errors and a failed application error-record write.
+Final combined verification passed **184/184**, without exclusions or skips, plus the **1/1** browser regression.
 
 ## Remaining integration and compatibility gates
 
-- Apply and verify namespace-lifetime cleanup in the separate dependency-preparation launcher, which still uses the earlier outer-bwrap-only cancellation pattern. Complete combined verification before enabling real agent execution.
+- Cleanup guarantees do not cover manager failure with owner loss, simultaneous backend/launcher death, or durable standalone recovery. Require trusted external quiescence review for those cases; do not infer safe recovery.
 - Preserve the application's intent/receipt ordering, lifetime ownership, original deadlines, recovery fencing, and tool-budget controls.
 - Keep registry acquisition owner-only. A package, agent tool, or repeated failed request cannot authorize fetching.
 - The production fixed-registry transport exists but has not made a public request. Production/public requests remain unauthorized in this task.

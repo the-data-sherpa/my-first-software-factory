@@ -193,6 +193,7 @@ It injects the pre-handle failure at the execution interface, not through a natu
 It covers both ordinary startup failure and concurrent stop, followed by process death and passive inspection.
 
 After these corrections, the model, CLI, factory, and recovery suites passed **63/63**, with no skips.
-Combined verification with ticket #6 remains pending.
+Final controlled integration with ticket #6 passed **184/184**, with no exclusions or skips, plus the **1/1** browser regression.
+This includes the owner resource-envelope gate and both preparation/containment cleanup corrections. Live model acceptance remains unverified.
 Package files and the dependency graph are unchanged.
-No package fetch, production-model request, real credential-file read, Vanguard access, GitHub write, push, or merge occurred.
+No public package fetch, production-model request, real credential-file read, Vanguard access, GitHub write, push, or merge occurred.
