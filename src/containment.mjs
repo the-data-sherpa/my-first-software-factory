@@ -11,6 +11,9 @@ import { DIAGNOSTIC_LIMITS } from './containment-test-profile.mjs';
 import { promisify } from 'node:util';
 import { dependencyMount } from './dependencies.mjs';
 import { namespaceLifetime, namespaceFenced, processIdentity as identity } from './containment-namespace.mjs';
+import { snapshotQualificationSource } from './qualification-source.mjs';
+import { selectedTest, selectedConfig, selectedReporter } from './qualification-selection.mjs';
+import { createHash } from 'node:crypto';
 
 const exec = promisify(execFile);
 export const CONTAINMENT_LIMITS = Object.freeze({
@@ -120,7 +123,7 @@ export async function createContainmentFixture(options) {
   return createExecution(options, true);
 }
 
-async function createExecution({ worktree, receiptDirectory, signal, protectedPaths = [], dependencyBundle }, fixture) {
+async function createExecution({ worktree, receiptDirectory, signal, protectedPaths = [], dependencyBundle, verificationSource }, fixture) {
   const verifyEnvelope = fixture ? fixtureEnvelope : verifyContainmentEnvelope;
   const envelope = await verifyEnvelope();
   const limits = envelope.diagnostic ? DIAGNOSTIC_LIMITS : CONTAINMENT_LIMITS;
@@ -155,7 +158,7 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
     available();
     if (combined(checkSignal).aborted) fail('ABORTED', 'The check was cancelled before launch.');
     if (activeCheck) fail('CHECK_BUSY', 'Only one contained check can run at once.');
-    if (!['boundary', ...(dependencyBundle ? ['vitest', 'lint'] : []), ...(fixture ? ['pass', 'fail', 'signal', 'output', 'hang', 'descendants', 'startup-stop', ...(envelope.diagnostic ? ['pids', 'scratch', 'memory'] : [])] : [])].includes(name)) {
+    if (!['boundary', ...(dependencyBundle ? ['vitest', 'lint', ...(verificationSource ? ['selected-regression'] : [])] : []), ...(fixture ? ['pass', 'fail', 'signal', 'output', 'hang', 'descendants', 'startup-stop', ...(envelope.diagnostic ? ['pids', 'scratch', 'memory'] : [])] : [])].includes(name)) {
       if (name === 'vitest' || name === 'lint') fail('DEPENDENCIES_NOT_PREPARED', 'Prepare and verify the private read-only dependency/toolchain bundle before repository checks.');
       fail('CHECK_NOT_ALLOWED', 'Choose a factory-defined check; arbitrary commands and arguments are not accepted.');
     }
@@ -172,13 +175,22 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
         await mkdir(directory, { mode: 0o700 });
         const observedEnvelope = await verifyEnvelope();
         const bundle = dependencyBundle ? await dependencyMount(dependencyBundle, worktree) : undefined;
-        const sourceDigest = await snapshot(root, `${directory}/source`, protectedPaths);
+        const sourceDigest = verificationSource
+          ? await snapshotQualificationSource(verificationSource, worktree, `${directory}/source`)
+          : await snapshot(root, `${directory}/source`, protectedPaths);
+        const selectionDigest = name === 'selected-regression'
+          ? createHash('sha256').update(selectedTest + selectedConfig + selectedReporter).digest('hex') : undefined;
+        if (selectionDigest) {
+          await durableFile(`${directory}/selected.test.mjs`, selectedTest);
+          await durableFile(`${directory}/selection-config.mjs`, selectedConfig);
+          await durableFile(`${directory}/selection-reporter.mjs`, selectedReporter);
+        }
         if (bundle) await mkdir(`${directory}/source/node_modules`, { mode: 0o700 });
         await durableFile(`${directory}/filter.bpf`, containmentFilter());
         const mountDirectory = await realpath(directory);
         probes = name === 'boundary' ? await hostProbes(`/proc/${process.pid}/fd/${retained.fd}/${id}`) : undefined;
         await durableFile(`${directory}/input.json`, JSON.stringify({ ...probes?.input, scratchBytes: limits.scratchBytes, dependencyBundle: Boolean(bundle) }));
-        const started = { id, kind: ['vitest', 'lint'].includes(name) ? 'repository' : 'diagnostic', name, backendPid: process.pid, sourceDigest,
+        const started = { id, kind: ['vitest', 'lint', 'selected-regression'].includes(name) ? 'repository' : 'diagnostic', name, backendPid: process.pid, sourceDigest, selectionDigest,
           dependencyIntentId: bundle?.intentId,
           startedAt: new Date().toISOString(), envelope: observedEnvelope, limits };
         await durableFile(`${directory}/started.json`, JSON.stringify(started));
@@ -189,6 +201,9 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
           '--setenv', 'PATH', '/runtime', '--setenv', 'HOME', '/tmp', '--setenv', 'TMPDIR', '/tmp', '--setenv', 'LANG', 'C.UTF-8',
           '--setenv', 'NODE_ENV', 'test', '--setenv', 'UV_THREADPOOL_SIZE', '2',
           '--ro-bind', await realpath(process.execPath), '/runtime/node'];
+        if (selectionDigest) args.push('--ro-bind', `${mountDirectory}/selected.test.mjs`, '/verification/selected.test.mjs',
+          '--ro-bind', `${mountDirectory}/selection-config.mjs`, '/verification/config.mjs',
+          '--ro-bind', `${mountDirectory}/selection-reporter.mjs`, '/verification/reporter.mjs');
         if (envelope.diagnostic) args.push('--ro-bind', '/usr/bin/sleep', '/runtime/sleep');
         for (const library of libraries) args.push('--ro-bind', await realpath(`/usr/lib/${library}`), `/usr/lib/${library}`);
         args.push('--symlink', 'usr/lib', '/lib64', '--symlink', 'usr/lib', '/lib',
@@ -196,7 +211,9 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
           '--ro-bind', `${mountDirectory}/input.json`, '/input.json', '--proc', '/proc', '--remount-ro', '/proc',
           '--dev', '/dev', '--remount-ro', '/dev', '--size', String(limits.scratchBytes), '--tmpfs', '/tmp',
           '--remount-ro', '/', '--chdir', '/work', '--seccomp', '3', '--block-fd', '4', '--info-fd', '5', '--', '/runtime/node',
-          ...(name === 'vitest' ? ['/work/node_modules/vitest/vitest.mjs', 'run', '--maxWorkers=2', '--minWorkers=1']
+          ...(name === 'selected-regression' ? ['/work/node_modules/vitest/vitest.mjs', 'run', '--maxWorkers=2', '--minWorkers=1',
+            '--config', '/verification/config.mjs', '--reporter', '/verification/reporter.mjs']
+            : name === 'vitest' ? ['/work/node_modules/vitest/vitest.mjs', 'run', '--maxWorkers=2', '--minWorkers=1']
             : name === 'lint' ? ['/work/node_modules/eslint/bin/eslint.js', '.', '--no-cache'] : ['/probe.mjs', name]));
         const eventsBefore = await resourceEvents(envelope);
         let launch; let length = 0; const output = [];

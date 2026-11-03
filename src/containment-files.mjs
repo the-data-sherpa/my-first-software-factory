@@ -52,7 +52,17 @@ export async function sourceFingerprint(worktree, manifest) {
   try { return await snapshot(root, undefined, [], manifest); }
   finally { await root.close(); }
 }
-export async function snapshot(root, destination, protectedPaths, manifest) {
+// Full private capture is separate from the tool-visible view. It includes excluded
+// configuration/source files, but never native Git metadata or dependency trees.
+export async function capturePrivateSource(worktree, destination) {
+  const root = await privateRoot(worktree);
+  const inventory = [];
+  try {
+    const digest = await snapshot(root, destination, [], undefined, inventory);
+    return { digest, inventory };
+  } finally { await root.close(); }
+}
+export async function snapshot(root, destination, protectedPaths, manifest, privateInventory) {
   if (destination) await mkdir(destination, { mode: 0o700 });
   const expected = manifest && new Map(manifest.entries.filter(e => !e.path.split('/').some(denied)).map(e => [e.path, e]));
   const expectedDirectories = manifest && new Set();
@@ -69,7 +79,10 @@ export async function snapshot(root, destination, protectedPaths, manifest) {
     const names = (await readdir(`/proc/self/fd/${directory.fd}`)).sort();
     for (const name of names) {
       const path = relative ? `${relative}/${name}` : name;
-      if (denied(name) || protectedPaths.some((entry) => path === entry || path.startsWith(`${entry}/`))) continue;
+      if (privateInventory) {
+        if (!relative && name === '.git') continue;
+        if (name === '.git' || name === 'node_modules') reject();
+      } else if (denied(name) || protectedPaths.some((entry) => path === entry || path.startsWith(`${entry}/`))) continue;
       if (++entries > 20_000) reject();
       const file = await open(`/proc/self/fd/${directory.fd}/${name}`, flags | constants.O_RDONLY);
       try {
@@ -78,6 +91,7 @@ export async function snapshot(root, destination, protectedPaths, manifest) {
           owned(info, true);
           if (expectedDirectories && !expectedDirectories.delete(path)) reject();
           if (destination) await mkdir(join(destination, path), { mode: 0o700 });
+          privateInventory?.push({ path, type: 'directory' });
           hash.update(`directory:${JSON.stringify(path)}\n`); await copy(file, path);
         } else {
           owned(info); bytes += info.size;
@@ -93,13 +107,15 @@ export async function snapshot(root, destination, protectedPaths, manifest) {
           if (length !== info.size) reject();
           const data = buffer.subarray(0, length);
           hash.update(`file:${JSON.stringify(path)}:${info.mode & 0o111}:${length}\n`); hash.update(data);
+          privateInventory?.push({ path, type: 'file', executable: info.mode & 0o111, bytes: length,
+            sha256: createHash('sha256').update(data).digest('hex') });
           if (expected) {
             const entry = expected.get(path);
             if (!entry || entry.bytes !== length || entry.sha256 !== createHash('sha256').update(data).digest('hex')
               || Boolean(info.mode & 0o111) !== (entry.mode === '100755')) reject();
             expected.delete(path);
           }
-          if (destination) await writeFile(join(destination, path), data, { flag: 'wx', mode: (info.mode & 0o111) ? 0o500 : 0o400 });
+          if (destination) await writeFile(join(destination, path), data, { flag: 'wx', mode: 0o400 | (info.mode & 0o111) });
         }
       } finally { await file.close(); }
     }
