@@ -34,10 +34,15 @@ if (process.argv[2] === 'boundary') {
   });
   const readOnly = (await Promise.all(['/work/must-not-write', '/must-not-write', '/dev/shm/must-not-write',
     '/runtime/must-not-write', '/usr/lib/must-not-write'].map(deniedWrite))).every(Boolean);
+  let readOnlyBundle;
+  if (input.dependencyBundle) {
+    try { await writeFile('/work/node_modules/.factory-write-proof', 'must not write'); readOnlyBundle = false; }
+    catch (error) { readOnlyBundle = error.code === 'EROFS'; }
+  }
   const scratch = await statfs('/tmp');
   const status = await readFile('/proc/self/status', 'utf8');
   await writeFile('/tmp/scratch-proof', 'scratch is writable');
-  console.log(JSON.stringify({ hidden, environmentScrubbed, environmentKeys: Object.keys(process.env).sort(), networkDenied, udpDenied, readOnly,
+  console.log(JSON.stringify({ hidden, environmentScrubbed, environmentKeys: Object.keys(process.env).sort(), networkDenied, udpDenied, readOnly, readOnlyBundle,
     scratchBytes: scratch.bsize * scratch.blocks, noNewPrivileges: /^NoNewPrivs:\s+1$/m.test(status),
     seccomp: /^Seccomp:\s+2$/m.test(status) && /^CapEff:\s+0+$/m.test(status) }));
 } else if (process.argv[2] === 'pass') {

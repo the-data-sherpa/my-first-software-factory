@@ -9,6 +9,7 @@ import { containmentFilter } from './containment-filter.mjs';
 import { hostProbes } from './containment-host-probes.mjs';
 import { DIAGNOSTIC_LIMITS } from './containment-test-profile.mjs';
 import { promisify } from 'node:util';
+import { dependencyMount } from './dependencies.mjs';
 
 const exec = promisify(execFile);
 export const CONTAINMENT_LIMITS = Object.freeze({
@@ -75,8 +76,8 @@ async function durableFile(path, data) {
 
 /**
  * Trusted host interface, not a model tool schema. No command, argv, env, executable,
- * sandbox flags, receipt, or limits are accepted from a caller. Dependencies remain
- * blocked until #6 supplies a verified private bundle integration.
+ * sandbox flags, receipt, or limits are accepted from a caller. Repository checks
+ * require a process-local dependency handle, revalidated before every read-only mount.
  */
 export async function createContainedExecution(options) {
   return createExecution(options, false);
@@ -118,7 +119,7 @@ export async function createContainmentFixture(options) {
   return createExecution(options, true);
 }
 
-async function createExecution({ worktree, receiptDirectory, signal, protectedPaths = [] }, fixture) {
+async function createExecution({ worktree, receiptDirectory, signal, protectedPaths = [], dependencyBundle }, fixture) {
   const verifyEnvelope = fixture ? fixtureEnvelope : verifyContainmentEnvelope;
   const envelope = await verifyEnvelope();
   const limits = envelope.diagnostic ? DIAGNOSTIC_LIMITS : CONTAINMENT_LIMITS;
@@ -153,7 +154,7 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
     available();
     if (combined(checkSignal).aborted) fail('ABORTED', 'The check was cancelled before launch.');
     if (activeCheck) fail('CHECK_BUSY', 'Only one contained check can run at once.');
-    if (!['boundary', ...(fixture ? ['pass', 'fail', 'signal', 'output', 'hang', 'descendants', ...(envelope.diagnostic ? ['pids', 'scratch', 'memory'] : [])] : [])].includes(name)) {
+    if (!['boundary', ...(dependencyBundle ? ['vitest', 'lint'] : []), ...(fixture ? ['pass', 'fail', 'signal', 'output', 'hang', 'descendants', ...(envelope.diagnostic ? ['pids', 'scratch', 'memory'] : [])] : [])].includes(name)) {
       if (name === 'vitest' || name === 'lint') fail('DEPENDENCIES_NOT_PREPARED', 'Prepare and verify the private read-only dependency/toolchain bundle before repository checks.');
       fail('CHECK_NOT_ALLOWED', 'Choose a factory-defined check; arbitrary commands and arguments are not accepted.');
     }
@@ -169,12 +170,15 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
         const directory = `${retainedPath}/${id}`;
         await mkdir(directory, { mode: 0o700 });
         const observedEnvelope = await verifyEnvelope();
+        const bundle = dependencyBundle ? await dependencyMount(dependencyBundle, worktree) : undefined;
         const sourceDigest = await snapshot(root, `${directory}/source`, protectedPaths);
+        if (bundle) await mkdir(`${directory}/source/node_modules`, { mode: 0o700 });
         await durableFile(`${directory}/filter.bpf`, containmentFilter());
         const mountDirectory = await realpath(directory);
         probes = name === 'boundary' ? await hostProbes(`/proc/${process.pid}/fd/${retained.fd}/${id}`) : undefined;
-        await durableFile(`${directory}/input.json`, JSON.stringify({ ...probes?.input, scratchBytes: limits.scratchBytes }));
-        const started = { id, kind: 'diagnostic', name, backendPid: process.pid, sourceDigest,
+        await durableFile(`${directory}/input.json`, JSON.stringify({ ...probes?.input, scratchBytes: limits.scratchBytes, dependencyBundle: Boolean(bundle) }));
+        const started = { id, kind: ['vitest', 'lint'].includes(name) ? 'repository' : 'diagnostic', name, backendPid: process.pid, sourceDigest,
+          dependencyIntentId: bundle?.intentId,
           startedAt: new Date().toISOString(), envelope: observedEnvelope, limits };
         await durableFile(`${directory}/started.json`, JSON.stringify(started));
         filter = await open(`${directory}/filter.bpf`, 'r');
@@ -187,10 +191,12 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
         if (envelope.diagnostic) args.push('--ro-bind', '/usr/bin/sleep', '/runtime/sleep');
         for (const library of libraries) args.push('--ro-bind', await realpath(`/usr/lib/${library}`), `/usr/lib/${library}`);
         args.push('--symlink', 'usr/lib', '/lib64', '--symlink', 'usr/lib', '/lib',
-          '--ro-bind', `${mountDirectory}/source`, '/work', '--ro-bind', helperPath, '/probe.mjs',
+          '--ro-bind', `${mountDirectory}/source`, '/work', ...(bundle ? ['--ro-bind', bundle.path, '/work/node_modules'] : []), '--ro-bind', helperPath, '/probe.mjs',
           '--ro-bind', `${mountDirectory}/input.json`, '/input.json', '--proc', '/proc', '--remount-ro', '/proc',
           '--dev', '/dev', '--remount-ro', '/dev', '--size', String(limits.scratchBytes), '--tmpfs', '/tmp',
-          '--remount-ro', '/', '--chdir', '/work', '--seccomp', '3', '--block-fd', '4', '--', '/runtime/node', '/probe.mjs', name);
+          '--remount-ro', '/', '--chdir', '/work', '--seccomp', '3', '--block-fd', '4', '--', '/runtime/node',
+          ...(name === 'vitest' ? ['/work/node_modules/vitest/vitest.mjs', 'run', '--maxWorkers=2', '--minWorkers=1']
+            : name === 'lint' ? ['/work/node_modules/eslint/bin/eslint.js', '.', '--no-cache'] : ['/probe.mjs', name]));
         const eventsBefore = await resourceEvents(envelope);
         let launch; let length = 0; const output = [];
         child = spawn('/usr/bin/bwrap', args, { env: {}, stdio: ['ignore', 'pipe', 'pipe', filter.fd, 'pipe'] });
@@ -240,7 +246,8 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
             result.probe = JSON.parse(bytes.toString('utf8'));
             if (result.probe.hidden !== true || result.probe.environmentScrubbed !== true || result.probe.networkDenied !== true || result.probe.udpDenied !== true
               || result.probe.readOnly !== true || result.probe.noNewPrivileges !== true || result.probe.seccomp !== true
-              || result.probe.scratchBytes !== limits.scratchBytes || result.hostConnections !== 0) throw new Error();
+              || result.probe.scratchBytes !== limits.scratchBytes || result.hostConnections !== 0
+              || (bundle && result.probe.readOnlyBundle !== true)) throw new Error();
           } catch { result.passed = false; result.reason = 'boundary-verification'; }
         }
         await durableFile(`${directory}/result.json`, JSON.stringify(result));

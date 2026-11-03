@@ -6,7 +6,8 @@ import { resolve, join } from 'node:path';
 import { createHash } from 'node:crypto';
 
 const denied = (name) => name === '.git' || name === 'node_modules' || name === 'ownership.json'
-  || name.startsWith('.factory') || name.startsWith('.ownership') || /^\.env(?:\.|$)/.test(name);
+  || name.startsWith('.factory') || name.startsWith('.ownership') || /^\.env(?:\.|$)/.test(name)
+  || ['.npmrc', '.yarnrc', '.yarnrc.yml', 'bunfig.toml'].includes(name);
 function reject() { const error = new Error('Only owned regular worktree files are available.'); error.code = 'UNSAFE_PATH'; throw error; }
 const flags = constants.O_NOFOLLOW | constants.O_NONBLOCK;
 function owned(info, directory = false) {

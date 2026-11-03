@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { DIAGNOSTIC_LIMITS, SMALL_DIAGNOSTICS } from '../src/containment-test-profile.mjs';
 
 const args = process.argv.slice(2);
-if (process.versions.node !== '24.21.0' || !['serve', 'diagnose'].includes(args[0])) {
-  process.stderr.write('Use Node 24.21.0: factory-contained.mjs serve [factory options] | diagnose CASE DIRECTORY\n');
+if (process.versions.node !== '24.21.0' || !['serve', 'diagnose', 'prepare-dependencies', 'dependencies-diagnose'].includes(args[0])) {
+  process.stderr.write('Use Node 24.21.0: factory-contained.mjs serve [factory options] | diagnose CASE DIRECTORY | prepare-dependencies INTENT | dependencies-diagnose CASE DIRECTORY\n');
   process.exitCode = 1;
 } else {
   const small = args[0] === 'diagnose' && SMALL_DIAGNOSTICS.includes(args[1]);
