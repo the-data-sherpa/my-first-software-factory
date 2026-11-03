@@ -396,7 +396,8 @@ An earlier full-suite attempt passed 112/113 and timed out in the existing desce
 The timeout left bubblewrap and two fixture descendants alive in that test's scope.
 Only the exact owned scope, `factory-contained-67d4b482-1fa2-4251-959f-b5c79b25a1bf.scope`, was stopped.
 An isolated rerun and the final full rerun passed without changing the diagnostic.
-The cause remains unresolved. Do not treat those later passes as proof that the cleanup failure cannot recur.
+At that checkpoint, the cause remained unresolved. Those later passes were not proof that the cleanup failure could not recur.
+The later [containment correction](containment-cleanup-correction.md) reproduced a startup race, without claiming to identify the exact mode in the historical timeout.
 The evidence directory retains the failed and successful suite logs and the scoped cleanup observation.
 
 ## Registry extension verification
@@ -427,8 +428,8 @@ Verification under Node 24.21.0:
 Private retained evidence is at `/tmp/factory-dependency-registry-evidence-Jde8eZ/`.
 It contains suite logs and complete nested-registry, later-workspace reuse, download-cancellation, and Bun-install-cancellation artifacts.
 The loopback servers and associated transient scopes have stopped.
-The unchanged containment cleanup caveat in the baseline record remains the parallel diagnosis owner's responsibility.
-A passing rerun does not resolve that caveat.
+This registry extension did not resolve the containment cleanup caveat in the baseline record.
+A passing rerun was not evidence of a cleanup correction.
 
 These tests do not establish public-registry TLS/availability, real Vitest/ESLint compatibility, or real Vanguard baseline health.
 No public egress, package install into factory dependencies, host credential access, tracker write, or live model call occurred.
@@ -442,11 +443,25 @@ The application retains intent and receipts, original deadlines/counters, stop/s
 See the [application record](dependency-application.md) for lifecycle tests, registry opt-in, and later-workspace reuse evidence.
 
 The parent dependency/application selection passed **27/27** after this wiring.
-Independent registry review and combined containment acceptance remain pending.
+
+## Independent registry review correction
+
+The review found that a scoped lock key such as `@fixture/vitest` could contain the unscoped tuple `vitest@1.0.0`.
+A suffix-only placement check and version-only graph lookup admitted this undocumented alias.
+The reviewer reproduced a successful frozen Bun installation with the wrong package identity at the scoped path.
+No sandbox or arbitrary-origin escape was observed.
+
+Owner-admission regressions reproduce both root and nested scoped substitutions.
+Both failed before the correction, returning an admitted intent rather than `DEPENDENCIES_UNSUPPORTED`.
+The parser now compares complete package names at placements and requires each resolved tuple to match its dependency edge's name.
+Both cases reject before acquisition with zero requests. Supported scoped and nested graphs still install and pass their controlled checks.
+
+After this correction and the containment integration, **38/38** tests passed across the containment, registry, and dependency-application suites, with no skips.
+This is targeted verification, not complete containment acceptance.
 
 ## Remaining integration and compatibility gates
 
-- Investigate the intermittent descendant-cleanup failure before enabling real agent execution. This slice does not resolve that containment caveat.
+- Apply and verify namespace-lifetime cleanup in the separate dependency-preparation launcher, which still uses the earlier outer-bwrap-only cancellation pattern. Complete combined verification before enabling real agent execution.
 - Preserve the application's intent/receipt ordering, lifetime ownership, original deadlines, recovery fencing, and tool-budget controls.
 - Keep registry acquisition owner-only. A package, agent tool, or repeated failed request cannot authorize fetching.
 - The production fixed-registry transport exists but has not made a public request. Production/public requests remain unauthorized in this task.

@@ -55,7 +55,7 @@ export function registryPlan(manifest, lock) {
     if (key.length > 500 || !keyRE.test(key) || !Array.isArray(tuple) || tuple.length !== 4 || tuple[1] !== '') fail();
     const at = typeof tuple[0] === 'string' ? tuple[0].lastIndexOf('@') : -1;
     const name = tuple[0]?.slice(0, at); const version = tuple[0]?.slice(at + 1);
-    if (!nameRE.test(name) || name.length > 150 || !versionOK(version) || (key !== name && !key.endsWith(`/${name}`))
+    if (!nameRE.test(name) || name.length > 150 || !versionOK(version) || key.match(new RegExp(namePattern, 'g')).at(-1) !== name
       || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(tuple[3])) fail();
     only(tuple[2], ['dependencies', 'bin']); dependencies(tuple[2].dependencies);
     if (tuple[2].bin !== undefined && (!object(tuple[2].bin) || Object.entries(tuple[2].bin).some(([name, path]) =>
@@ -77,7 +77,7 @@ export function registryPlan(manifest, lock) {
       }
       key ??= name;
       const entry = packages.get(key);
-      if (!entry || !matches(entry.version, spec)) fail();
+      if (!entry || entry.name !== name || !matches(entry.version, spec)) fail();
       if (!reached.has(key)) { reached.add(key); visit(key, entry.metadata.dependencies); }
     }
   }

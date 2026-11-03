@@ -10,6 +10,25 @@ import { scopeProcesses, waitForCleanup } from '../../src/containment-process-fi
 
 const code = async (operation) => { try { await operation(); return 'unexpected-success'; } catch (error) { return serializeDependencyError(error).code; } };
 export async function failureScenario(scenario, root) {
+  if (['scoped-substitution', 'nested-scoped-substitution'].includes(scenario)) {
+    const f = await registryFixture(root, scenario === 'scoped-substitution' ? {
+      mutateManifest(manifest) { manifest.dependencies = { '@fixture/vitest': '1.0.0' }; },
+      mutateLock(lock) {
+        lock.workspaces[''].dependencies = { '@fixture/vitest': '1.0.0' };
+        lock.packages['@fixture/vitest'] = lock.packages.vitest;
+        delete lock.packages.vitest;
+      },
+    } : {
+      mutateLock(lock) {
+        lock.packages.vitest[2].dependencies = { '@fixture/fixture-leaf': '2.0.0' };
+        lock.packages['vitest/@fixture/fixture-leaf'] = lock.packages['fixture-leaf'];
+        delete lock.packages['fixture-leaf'];
+      },
+    });
+    try {
+      return { code: await code(() => admitDependencies({ workspaceIntent: f.workspaceIntent, bunPath, registry: true })), requests: f.requests.length };
+    } finally { await f.close(); }
+  }
   if (scenario === 'reject-locks') {
     const results = {};
     const cases = {

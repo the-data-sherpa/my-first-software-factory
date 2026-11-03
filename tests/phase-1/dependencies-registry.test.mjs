@@ -56,6 +56,12 @@ test('owner fetch cancellation drains the active socket before releasing ownersh
   assert.deepEqual(await scenario(t, 'cancel-fetch'), { cancelled: 'DEPENDENCIES_ABORTED', sockets: 0, ownerReleased: true, requests: 1 });
 });
 
+for (const placement of ['scoped-substitution', 'nested-scoped-substitution']) {
+  test(`${placement}: owner admission rejects an unscoped archive for a scoped dependency before fetching`, async (t) => {
+    assert.deepEqual(await scenario(t, placement), { code: 'DEPENDENCIES_UNSUPPORTED', requests: 0 });
+  });
+}
+
 test('unknown or ambiguous lock features and arbitrary transitive sources fail before any request', async (t) => {
   const result = await scenario(t, 'reject-locks');
   assert.equal(Object.keys(result).length, 16);
