@@ -38,7 +38,9 @@ The adapter commits the original input and receipt identity in the run's executi
 It rejects a second `start` against an existing receipt. It never uses resubmission for lookup or recovery.
 `finished` returns the existing factory receipt format. The application must still call `close` before releasing admission.
 `cancel` aborts the model and joins cancellation. `close` also aborts and drains, independently of closing SQLite.
-A startup rejection drains anything it started. A drain failure rejects closure and keeps factory admission fenced.
+A startup rejection must drain anything it started.
+If startup cleanup fails before returning a handle, `MODEL_DRAIN_FAILED` keeps the run interrupted, admission blocked, and backend ownership held.
+A stop request cannot convert that uncertainty into a terminal result.
 
 Inspection retains the native read-only implementation, schema validation, WAL handling, and original submission identity from tickets #1/#2.
 No model request starts during inspection or backend reopen.
@@ -131,13 +133,25 @@ There is no hard monetary ceiling. Local abort does not prove that provider bill
 Error bodies, auth diagnostics, and failed-response partial content do not enter returned errors or retained evidence.
 A length stop, provider error, reported cap violation, or failed smoke cannot pass preflight or establish review readiness.
 
-## Parent integration gates
+## Application and CLI integration
 
-This branch does not change normal `serve`, the CLI, application outcomes, or application capability flags.
-The parent must preserve explicit owner authorization for any production-model operation.
-Do not create a credential-discovering runtime on ordinary startup, inspection, or recovery.
-Do not describe the current application's `fixture-completed` outcome as production acceptance.
-Use the retained preflight result and accounting when adding model-specific outcome rendering.
+The foreground backend accepts the explicit `serve --model-preflight` option.
+It rejects combinations with `--fixture` or `--prepare-workspace`.
+A separate CLI `start` records the owner brief and starts one fixed no-tool smoke, not the requested maintenance task.
+Ordinary serving remains production-blocked.
+
+`createOwnerModelPreflight` constructs the adapter without discovering credentials.
+Only its admitted `start` creates Pi's `ModelRuntime` through the existing credential integration.
+Catalog refresh and network discovery stay disabled. User model overrides and extensions are not loaded.
+Inspection, duplicate admission, recovery assessment, and backend reopen do not create a runtime.
+Stop during initialization holds admission until initialization returns and prevents subsequent request dispatch.
+
+A successful smoke records `model-preflight-completed`, never `fixture-completed` or maintenance readiness.
+Failed smoke outcomes retain their fixed model reason codes and block work.
+`capabilities.productionModel` means the selected adapter is enabled, not that live authentication or provider enforcement has passed.
+Repository tools and `reviewReady` remain false.
+
+## Remaining integration gates
 
 Ticket #7 should run the request controller's smoke inside the maintenance run's existing budget before executor dispatch.
 Do not copy smoke evidence from a different diagnostic run or replenish the budget between preflight and agent work.
@@ -159,12 +173,23 @@ The focused suite covers outgoing payloads, auth/cap incompatibility, stalls, ca
 It also covers durable retry limits, reconstructed budgets, real process death, passive inspection, and fail-closed production resume.
 Existing recovery, containment, workspace, and execution-store regressions remain in the full suite.
 
-Final verification under Node 24.21.0:
+Delegated module verification under Node 24.21.0:
 
 - Focused model suite: **18/18 passed**.
 - `npm test`: **122/122 passed**, with no skips.
 - `CHROMIUM_PATH=/usr/bin/chromium npm run test:ui`: **1/1 passed**.
 - JavaScript syntax checks and `git diff --check` passed.
 
-Package files and the dependency graph are unchanged. The checkout uses the permitted untracked local `node_modules` symlink.
-No package fetch, production-model request, host credential-file read, Vanguard access, GitHub write, push, or merge occurred.
+The independent model-safety review found two defects. Both failed their regressions before correction:
+
+- Startup cleanup failure released admission without returning a handle. The application now retains interrupted status and ownership.
+- The disposable CLI backend and crash worker used different HOME values. They now share the same private home and project identity.
+
+The startup regression uses the real model adapter and a response body whose cancellation fails.
+It injects the pre-handle failure at the execution interface, not through a natural SDK or disk failure.
+It covers both ordinary startup failure and concurrent stop, followed by process death and passive inspection.
+
+After these corrections, the model, CLI, factory, and recovery suites passed **63/63**, with no skips.
+Combined verification with ticket #6 remains pending.
+Package files and the dependency graph are unchanged.
+No package fetch, production-model request, real credential-file read, Vanguard access, GitHub write, push, or merge occurred.

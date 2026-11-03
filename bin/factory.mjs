@@ -5,7 +5,7 @@ import { lstat, open, unlink, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { openFactory, inspectHistory, backupFactory, restoreFactory, DEFAULT_STATE_DIR, FactoryError } from '../src/factory.mjs';
-import { createFixtureExecution } from '../src/execution.mjs';
+import { createFixtureExecution, createOwnerModelPreflight } from '../src/execution.mjs';
 import { admitWorkspace, prepareWorkspace, inspectWorkspace } from '../src/workspace.mjs';
 
 const print = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
@@ -15,15 +15,21 @@ const safeError = (error) => error instanceof FactoryError
 const options = {
   'state-dir': { type: 'string', default: DEFAULT_STATE_DIR },
   fixture: { type: 'boolean' }, 'fixture-delay-ms': { type: 'string' }, 'prepare-workspace': { type: 'boolean' },
+  'model-preflight': { type: 'boolean' },
   'project-path': { type: 'string' }, 'request-id': { type: 'string' },
   brief: { type: 'string' }, 'brief-text': { type: 'string' },
   to: { type: 'string' }, from: { type: 'string' }, review: { type: 'string' },
 };
 
 async function serve(values) {
+  if (values['model-preflight'] && (values.fixture || values['prepare-workspace'])) {
+    throw new FactoryError('INVALID_ARGUMENTS', 'Model preflight cannot enable fixtures or repository preparation.');
+  }
   const fixture = values.fixture ? createFixtureExecution({ delayMs: Number(values['fixture-delay-ms'] ?? 0) }) : undefined;
   if (!values.fixture && values['fixture-delay-ms'] !== undefined) throw new FactoryError('INVALID_ARGUMENTS', 'Fixture options require --fixture.');
-  const factory = await openFactory({ stateDir: values['state-dir'], execution: fixture,
+  const execution = fixture ?? (values['model-preflight'] ? createOwnerModelPreflight() : undefined);
+  const mode = execution?.mode ?? 'production-blocked';
+  const factory = await openFactory({ stateDir: values['state-dir'], execution,
     ...(values['prepare-workspace'] ? { workspace: { admit: admitWorkspace, prepare: prepareWorkspace, inspect: inspectWorkspace } } : {}),
     ...(values['project-path'] ? { project: { id: 'vanguard', repositoryPath: values['project-path'] } } : {}),
   });
@@ -44,7 +50,7 @@ async function serve(values) {
     };
     server = createServer(async (request, response) => {
       try {
-        if (request.method === 'GET' && request.url === '/health') return send(response, 200, { storageVersions: factory.storageInfo(), fixture: Boolean(fixture) });
+        if (request.method === 'GET' && request.url === '/health') return send(response, 200, { storageVersions: factory.storageInfo(), fixture: Boolean(fixture), mode });
         if (request.method === 'GET' && request.url === '/runs') return send(response, 200, await factory.listRuns());
         if (request.method === 'GET' && /^\/runs\/run_[a-f0-9-]+$/.test(request.url)) {
           return send(response, 200, await factory.inspectRun(request.url.slice('/runs/'.length)));
@@ -84,7 +90,7 @@ async function serve(values) {
     })().catch(() => { process.stderr.write(`${JSON.stringify({ error: safeError() })}\n`); process.exitCode = 1; });
     process.on('SIGTERM', stop);
     process.on('SIGINT', stop);
-    print({ event: 'backend-ready', mode: fixture ? 'fixture' : 'production-blocked', storageVersions: factory.storageInfo() });
+    print({ event: 'backend-ready', mode, storageVersions: factory.storageInfo() });
   } catch (error) {
     server?.close();
     await factory.close();
@@ -142,7 +148,7 @@ try {
   const { values, positionals } = parsed;
   const [command, runId] = positionals;
   const allowed = {
-    serve: ['fixture', 'fixture-delay-ms', 'project-path', 'prepare-workspace'],
+    serve: ['fixture', 'fixture-delay-ms', 'project-path', 'prepare-workspace', 'model-preflight'],
     start: ['request-id', 'brief', 'brief-text'], inspect: [], list: [], info: [],
     stop: [], resume: ['review'], replace: ['request-id', 'review'],
     backup: ['to'], restore: ['from'],

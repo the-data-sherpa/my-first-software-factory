@@ -266,5 +266,17 @@ Final combined verification under Node 24.21.0:
 - Package files, the dependency graph, and the runtime pin are unchanged.
 - The transient test scopes have stopped. No installed service or global configuration change remains.
 
-Tickets #5 and #6 are the next independent slices: bounded selected-model preflight and the private dependency bundle.
-Real Vitest/lint, Bun/Vanguard toolchain compatibility, model-driven execution, and readiness qualification remain later gates.
+### Tickets #5 and #6 in progress
+
+Ticket #5 now supplies bounded selected-model requests and an explicit no-tool CLI smoke operation.
+Its independent safety review found a startup-drain ownership defect and a disposable-home test mismatch.
+Both corrections passed their regressions. The model, CLI, factory, and recovery suites passed **63/63** after integration.
+See the [ticket #5 record](implementation/ticket-05.md) for limits and evidence.
+
+Ticket #6 currently supplies offline Bun preparation and verified read-only reuse with controlled packages.
+Registry/transitive support and application integration remain incomplete.
+Its test run also exposed an intermittent descendant-cleanup failure. Later passes do not resolve that failure.
+Real agent execution stays disabled while that investigation remains open.
+
+Combined verification remains pending.
+Real Vitest/lint, Bun/Vanguard compatibility, live model acceptance, baseline health, and readiness qualification remain later gates.

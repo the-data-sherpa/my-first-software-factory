@@ -221,6 +221,32 @@ These checks cover process crashes, not host or power failure guarantees.
 Run the combined unit/integration suite with `npm test`, or select `npm run test:phase0` and `npm run test:phase1`.
 The original browser probe remains available through `CHROMIUM_PATH=/usr/bin/chromium npm run test:ui`.
 
+## Selected-model preflight
+
+Live acceptance requires a separate owner decision. The commands below can read Pi credentials and send a paid request after admission.
+They were not used with real credentials during implementation.
+
+```bash
+# Foreground terminal: explicitly enable only the no-tool smoke operation.
+node bin/factory-contained.mjs serve --model-preflight
+
+# Separate terminal: admit the diagnostic brief and start one bounded smoke.
+npm run factory -- start --request-id model-smoke-001 --brief /absolute/path/to/brief.md
+```
+
+Starting this backend does not discover credentials or issue a request. Only an admitted `start` creates Pi's `ModelRuntime`.
+The selected route is `openai/gpt-6.1-sol`, with explicit low reasoning and cap-compatible API-key authentication.
+OAuth, missing credentials, unsupported caps, and provider failures block instead of choosing another route.
+The smoke allows one attempt, at most 1,024 requested output tokens, and a 60-second complete-stream deadline.
+It uses the original run deadline and persistent budget. It enables no repository tools and cannot combine with workspace preparation or a fixture.
+
+Inspection retains request accounting and fixed failure reasons without loading credentials.
+A successful smoke records `model-preflight-completed` with `reviewReady: false`, not maintenance success.
+Unknown terminal usage retains the full output reservation. Estimated cost is not a bill or a guaranteed monetary ceiling.
+Stop and shutdown abort and drain requests. Unconfirmed drainage, including startup cleanup failure, keeps admission and ownership fenced.
+Crashed model execution cannot resume or be replaced without trusted reconciliation.
+See the [model implementation record](docs/implementation/ticket-05.md) for controlled evidence and remaining live acceptance gates.
+
 ## Preparing an exact-source workspace
 
 Workspace preparation is explicit. Starting a fixture backend without this option does not access the configured repository.
@@ -263,6 +289,7 @@ It conservatively charges each bounded operation as one tool round and drains be
 Repository Vitest/lint checks remain blocked with `DEPENDENCIES_NOT_PREPARED` until ticket #6 adds a verified private dependency bundle.
 Production-model admission and agent tool registration remain later gates. No real Vanguard toolchain compatibility is claimed yet.
 See the [containment implementation record](docs/implementation/ticket-03.md) for verification evidence and host restrictions.
+A later #6 test exposed an intermittent descendant-cleanup failure. Investigation remains open, so real agent execution stays disabled.
 
 ## Build stages
 

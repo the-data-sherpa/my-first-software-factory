@@ -7,6 +7,7 @@ import { fork } from 'node:child_process';
 import { once } from 'node:events';
 import { openFactory, inspectHistory } from '../../src/factory.mjs';
 import { createModelExecution, inspectExecution } from '../../src/execution.mjs';
+import * as executionApi from '../../src/execution.mjs';
 import { controlledRuntime, controlledTransport, eventsResponse } from './model-fixtures.mjs';
 import { until } from '../phase-0/helpers.mjs';
 
@@ -20,6 +21,63 @@ async function setup(t, reply, options = {}) {
   t.after(async () => { await factory.close(); await rm(directory, { recursive: true, force: true }); });
   return { factory, stateDir, execution, ...transport };
 }
+
+test('owner model startup loads no runtime until an admitted start and never on passive reopening', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'factory-owner-model-'));
+  const stateDir = join(directory, 'state');
+  const project = { id: 'vanguard', repositoryPath: join(directory, 'unread-repository') };
+  const transport = controlledTransport();
+  let creations = 0;
+  let factory;
+  const execution = executionApi.createOwnerModelPreflight({ fetch: transport.fetch, createRuntime: async (options) => {
+    creations++;
+    assert.equal((await factory.listRuns())[0].status, 'running');
+    assert.equal(options.refreshOnCreate, false);
+    assert.equal(options.allowModelNetwork, false);
+    assert.equal(options.modelsPath, null);
+    return controlledRuntime();
+  } });
+  factory = await openFactory({ stateDir, project, execution });
+  t.after(async () => { await factory.close(); await rm(directory, { recursive: true, force: true }); });
+  assert.deepEqual(await factory.listRuns(), []);
+  assert.equal(creations, 0);
+  const run = await factory.startRun({ requestId: 'explicit-owner-smoke', brief });
+  const done = await until(() => factory.inspectRun(run.id), (item) => item.status === 'completed');
+  assert.equal(done.outcome.kind, 'model-preflight-completed');
+  assert.equal(creations, 1);
+  assert.equal(transport.requests.length, 1);
+  await factory.close();
+  assert.deepEqual(await inspectHistory({ stateDir, runId: run.id }), done);
+  factory = await openFactory({ stateDir, project, execution });
+  assert.deepEqual(await factory.startRun({ requestId: 'explicit-owner-smoke', brief }), done);
+  assert.deepEqual(await factory.inspectRun(run.id), done);
+  assert.equal(creations, 1);
+  assert.equal(transport.requests.length, 1);
+});
+
+test('stop during owner runtime initialization holds admission until startup drains and dispatches no model request', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'factory-owner-startup-'));
+  const entered = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const transport = controlledTransport();
+  const execution = executionApi.createOwnerModelPreflight({ fetch: transport.fetch, createRuntime: async ({ signal }) => {
+    entered.resolve(signal);
+    await release.promise;
+    return controlledRuntime();
+  } });
+  const factory = await openFactory({ stateDir: join(directory, 'state'), execution });
+  t.after(async () => { release.resolve(); await factory.close(); await rm(directory, { recursive: true, force: true }); });
+  const run = await factory.startRun({ requestId: 'initializing', brief });
+  const signal = await entered.promise;
+  const stopping = factory.stopRun(run.id);
+  assert.equal(signal.aborted, true);
+  await assert.rejects(factory.startRun({ requestId: 'cannot-overlap-initialization', brief }), { code: 'RUN_ACTIVE' });
+  release.resolve();
+  const stopped = await stopping;
+  assert.equal(stopped.status, 'stopped');
+  assert.equal(stopped.counters.modelAttempts, 0);
+  assert.equal(transport.requests.length, 0);
+});
 
 test('crashed production-adapter work inspects passively and fails closed on resume without changing submission identity or allowances', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'factory-model-crash-'));
@@ -64,16 +122,58 @@ test('crashed production-adapter work inspects passively and fails closed on res
   } finally { await factory.close(); }
 });
 
+test('startup drainage failure fences admission and ownership even without a returned handle or after stop', { timeout: 20_000 }, async (t) => {
+  for (const scenario of ['failure', 'stop']) {
+    const directory = await mkdtemp(join(tmpdir(), 'factory-model-startup-drain-'));
+    const stateDir = join(directory, 'state');
+    const worker = fork(new URL('./model-startup-worker.mjs', import.meta.url), [stateDir, scenario], {
+      stdio: ['ignore', 'ignore', 'pipe', 'ipc'], env: { HOME: directory, PATH: process.env.PATH },
+    });
+    const kill = async () => {
+      if (worker.exitCode !== null || worker.signalCode !== null) return;
+      const exited = once(worker, 'exit'); worker.kill('SIGKILL'); await exited;
+    };
+    t.after(async () => { await kill(); await rm(directory, { recursive: true, force: true }); });
+    let stderr = '';
+    worker.stderr.on('data', (chunk) => { stderr += chunk; });
+    const result = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`Startup checkpoint missing: ${stderr}`)), 8000);
+      worker.once('message', (message) => { clearTimeout(timer); resolve(message); });
+      worker.once('exit', () => { clearTimeout(timer); reject(new Error(`Startup worker exited: ${stderr}`)); });
+    });
+    assert.equal(result.record.status, 'interrupted');
+    assert.equal(result.record.outcome.reason, 'drain_failed');
+    assert.equal(result.record.reservations[0].state, 'uncertain');
+    assert.equal(result.dispatches, 1);
+    assert.equal(result.overlap, 'RUN_ACTIVE');
+    assert.equal(result.replacement, 'RUN_ACTIVE');
+    assert.equal(result.stop, 'DRAIN_FAILED');
+    assert.equal(result.close, 'DRAIN_FAILED');
+    assert.equal(result.ownerBefore, 'BACKEND_OWNED');
+    assert.equal(result.ownerAfter, 'BACKEND_OWNED');
+    await kill();
+    const retained = await inspectHistory({ stateDir, runId: result.record.id });
+    assert.equal(retained.status, 'interrupted');
+    assert.equal(retained.deadlineAt, result.record.deadlineAt);
+    assert.deepEqual(retained.reservations, result.record.reservations);
+  }
+});
+
 test('default explicit preflight is one no-tool request even for transient errors and length stops', async (t) => {
   for (const reply of [() => new Response('{"error":{"message":"rate limit sensitive-provider"}}', { status: 429 }),
     () => eventsResponse({ status: 'incomplete' }), () => eventsResponse()]) {
     const { factory, requests } = await setup(t, reply);
     const run = await factory.startRun({ requestId: 'smoke-only', brief });
-    const done = await until(() => factory.inspectRun(run.id), (item) => ['completed', 'failed'].includes(item.status));
+    const done = await until(() => factory.inspectRun(run.id), (item) => ['completed', 'failed', 'blocked'].includes(item.status));
     assert.equal(requests.length, 1);
     assert.equal(requests[0].payload.max_output_tokens, 1024);
     assert.equal(done.counters.modelAttempts, 1);
     assert.equal(done.outcome.reviewReady, false);
+    assert.equal(done.capabilities.productionModel, true);
+    assert.equal(done.capabilities.repositoryTools, false);
+    assert.equal(done.outcome.kind, done.status === 'completed' ? 'model-preflight-completed' : 'blocked');
+    if (done.status === 'completed') assert.equal(done.reservations[0].accounting.preflight, true);
+    else assert.match(done.outcome.reason, /^MODEL_/);
     assert.doesNotMatch(JSON.stringify(done), /sensitive-provider/);
   }
 });

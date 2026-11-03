@@ -57,10 +57,14 @@ function applyReceipt(record, receipt, { passive = false } = {}) {
   if (receipt.status === 'done') {
     record.status = record.stopRequested ? 'stopped' : 'completed';
     record.outcome = record.stopRequested ? { kind: 'stopped', reviewReady: false, reason: record.stopReason }
-      : { kind: 'fixture-completed', reviewReady: false, answer: receipt.answer };
+      : { kind: record.execution.mode === 'fixture' ? 'fixture-completed'
+        : record.execution.mode === 'model-preflight' ? 'model-preflight-completed' : 'execution-completed',
+      reviewReady: false, answer: receipt.answer };
   } else if (receipt.status === 'unanswered') {
-    record.status = record.stopRequested || receipt.reason === 'aborted' ? 'stopped' : 'failed';
-    record.outcome = { kind: record.status, reviewReady: false, reason: 'execution_unanswered' };
+    record.status = record.stopRequested || receipt.reason === 'aborted' ? 'stopped'
+      : record.execution.mode === 'model-preflight' ? 'blocked' : 'failed';
+    const modelReason = record.reservations?.filter((item) => item.kind === 'model').at(-1)?.accounting?.reason;
+    record.outcome = { kind: record.status, reviewReady: false, reason: modelReason ?? 'execution_unanswered' };
   } else record.status = 'interrupted';
   return record;
 }
@@ -86,6 +90,8 @@ export async function inspectHistory({ stateDir = DEFAULT_STATE_DIR, runId } = {
 /** Execution is trusted code, not operator configuration. start/resume must return an owned handle.
  * cancel requests cancellation; finished settles the receipt; close MUST join all owned work.
  * A thrown start/resume must have drained anything it started before rejecting.
+ * If startup drainage cannot be confirmed, reject with DRAIN_FAILED (or MODEL_DRAIN_FAILED)
+ * so admission and ownership remain fenced even without a returned handle.
  * assessRecovery must establish quiescence and reconcile partial effects without enabling scheduling.
  */
 export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id: 'vanguard', repositoryPath: join(homedir(), 'Projects', 'vanguard') }, execution, workspace,
@@ -139,7 +145,9 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
       storageVersions: { ...STORAGE_VERSIONS },
       execution: { mode: execution?.mode ?? 'production-blocked', model: execution?.model ?? 'openai/gpt-6.1-sol', requestId: `factory:${id}:input:1` },
       ...(workspace ? { workspace: { status: 'pending' } } : {}),
-      capabilities: { repositoryTools: false, productionModel: false, resourceContainmentVerified: false },
+      capabilities: { repositoryTools: false,
+        productionModel: ['model-preflight', 'model-bounded-no-tools'].includes(execution?.mode),
+        resourceContainmentVerified: false },
       outcome: null,
     };
   };
@@ -212,6 +220,7 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
       const receipt = await Promise.race([owned.handle.finished, owned.stopped.promise]);
       record = receipt ? applyReceipt(get(id), receipt) : get(id);
     } catch (error) {
+      owned.startupDrainFailed = ['MODEL_DRAIN_FAILED', 'DRAIN_FAILED'].includes(error?.code);
       record = get(id);
       record.status = 'failed';
       record.outcome = { kind: 'failed', reviewReady: false, reason: error instanceof FactoryError ? error.code : 'execution_failed' };
@@ -221,6 +230,7 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
       try {
         if (owned.handle) await owned.handle.close();
         await owned.cancelPromise;
+        if (owned.startupDrainFailed) throw new FactoryError('DRAIN_FAILED', 'Startup cleanup is unconfirmed.');
       } catch {
         const latest = get(id);
         latest.status = 'interrupted';

@@ -3,7 +3,7 @@ import { spawn, execFile, fork } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import test from 'node:test';
@@ -33,7 +33,7 @@ const cli = async (stateDir, ...args) => {
 };
 async function backend(t, stateDir, args = []) {
   const child = spawn(process.execPath, [entry, 'serve', '--state-dir', stateDir, ...args], {
-    stdio: ['ignore', 'pipe', 'pipe'], env: { PATH: process.env.PATH, HOME: tmpdir() },
+    stdio: ['ignore', 'pipe', 'pipe'], env: { PATH: process.env.PATH, HOME: dirname(stateDir) },
   });
   const stop = async (signal = 'SIGTERM') => {
     if (child.exitCode !== null || child.signalCode !== null) return;
@@ -129,6 +129,24 @@ test('competing CLI backends are fenced and production never substitutes a fixtu
   await running.stop();
 });
 
+test('CLI model preflight is explicit, rejects mixed modes, and blocks without credentials in a disposable home', { timeout: 30_000 }, async (t) => {
+  const { stateDir, briefPath } = await workspace(t);
+  await cliError(stateDir, 'INVALID_ARGUMENTS', 'serve', '--model-preflight', '--fixture');
+  await cliError(stateDir, 'INVALID_ARGUMENTS', 'serve', '--model-preflight', '--prepare-workspace');
+  const running = await backend(t, stateDir, ['--model-preflight']);
+  assert.equal((await cli(stateDir, 'info')).mode, 'model-preflight');
+  assert.deepEqual(await cli(stateDir, 'list'), []);
+  const run = await cli(stateDir, 'start', '--request-id', 'missing-auth', '--brief', briefPath);
+  const blocked = await until(() => cli(stateDir, 'inspect', run.id), (item) => item.status === 'blocked');
+  assert.equal(blocked.outcome.reason, 'MODEL_AUTH_REQUIRED');
+  assert.equal(blocked.outcome.reviewReady, false);
+  assert.equal(blocked.counters.modelAttempts, 1);
+  assert.equal(blocked.counters.toolRounds, 0);
+  assert.equal(blocked.workspace, undefined);
+  await running.stop();
+  assert.deepEqual(await cli(stateDir, 'inspect', run.id), blocked);
+});
+
 test('CLI file and inline briefs preserve snapshots and reject oversized files', { timeout: 30_000 }, async (t) => {
   const { stateDir, briefPath } = await workspace(t);
   const running = await backend(t, stateDir, ['--fixture']);
@@ -218,7 +236,7 @@ test('CLI stop is terminal and an explicitly reviewed resume keeps the same subm
 test('crash reconciliation finds a committed execution receipt without resubmitting admission', { timeout: 30_000 }, async (t) => {
   const { stateDir, directory } = await workspace(t);
   const worker = fork(new URL('./crash-worker.mjs', import.meta.url), [stateDir], {
-    stdio: ['ignore', 'pipe', 'pipe', 'ipc'], env: { PATH: process.env.PATH, HOME: tmpdir() },
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'], env: { PATH: process.env.PATH, HOME: directory },
   });
   const kill = async () => {
     if (worker.exitCode !== null || worker.signalCode !== null) return;
