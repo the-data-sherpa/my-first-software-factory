@@ -6,6 +6,7 @@ import { privateDirectory, acquireOwner, openRecords, STORAGE_VERSIONS, ACTIVE_S
 import { inspectExecution, validateExecutionStores } from './execution.mjs';
 import { executionBudget, requireReview, requireRemainingBudget, requireSafeResume } from './recovery.mjs';
 import { observeWorkspace, prepareRunWorkspace, requireWorkspaceQuiescence } from './workspace-run.mjs';
+import { observeDependencies, prepareRunDependencies, requireDependencyQuiescence } from './dependency-run.mjs';
 
 export { FactoryError } from './storage.mjs';
 export const backupFactory = (options) => backupStores(options, validateExecutionStores);
@@ -46,6 +47,11 @@ function applyReceipt(record, receipt, { passive = false } = {}) {
     throw new FactoryError('RECEIPT_MISMATCH', 'The execution receipt does not belong to this run.');
   }
   if (receipt.submissionId) record.execution.submissionId = receipt.submissionId;
+  if (record.operation === 'dependency-preparation') {
+    record.status = 'interrupted';
+    record.outcome = { kind: 'uncertain', reviewReady: false, reason: 'dependency_reconciliation_required' };
+    return record;
+  }
   const uncertainTools = record.reservations?.some((item) => item.kind === 'tool-round' && item.state === 'uncertain');
   const passiveFixture = record.execution.mode === 'fixture' && record.execution.model === 'factory-fixture/no-tools-v1'
     && record.counters.toolRounds === 0 && receipt.safety?.kind === 'tool-free-fixture';
@@ -79,6 +85,7 @@ export async function inspectHistory({ stateDir = DEFAULT_STATE_DIR, runId } = {
     if (runId && !runs[0]) throw new FactoryError('RUN_NOT_FOUND', 'No run has that identity.');
     for (const record of runs) {
       await observeWorkspace(record, stateDir);
+      await observeDependencies(record, stateDir);
       if (ACTIVE_STATUSES.includes(record.status)) {
         applyReceipt(record, await inspectExecution(join(stateDir, 'runs', record.id), { stateRoot: stateDir }), { passive: true });
       }
@@ -94,7 +101,7 @@ export async function inspectHistory({ stateDir = DEFAULT_STATE_DIR, runId } = {
  * so admission and ownership remain fenced even without a returned handle.
  * assessRecovery must establish quiescence and reconcile partial effects without enabling scheduling.
  */
-export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id: 'vanguard', repositoryPath: join(homedir(), 'Projects', 'vanguard') }, execution, workspace,
+export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id: 'vanguard', repositoryPath: join(homedir(), 'Projects', 'vanguard') }, execution, workspace, dependencyPreparation,
   clock = { now: Date.now, setTimeout, clearTimeout } } = {}) {
   stateDir = await privateDirectory(stateDir);
   if (project.id !== 'vanguard' || typeof project.repositoryPath !== 'string') {
@@ -109,6 +116,7 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
     const active = records.active();
     if (active) {
       await observeWorkspace(active, stateDir);
+      await observeDependencies(active, stateDir);
       records.save(applyReceipt(active, await inspectExecution(join(stateDir, 'runs', active.id), { stateRoot: stateDir }), { passive: true }));
     }
   } catch (error) { records.close(); release(); throw error; }
@@ -153,11 +161,12 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
   };
   async function assess(record) {
     await requireWorkspaceQuiescence(record, stateDir);
+    await requireDependencyQuiescence(record, stateDir);
     if (record.execution.mode === 'production-blocked' && record.workspace?.artifactStatus === 'prepared'
       && record.execution.submissionId === undefined && record.counters.modelAttempts === 0
       && record.counters.toolRounds === 0 && (record.reservations?.length ?? 0) === 0) {
       return { kind: 'workspace-only', quiescent: true, resumable: false,
-        evidence: 'Validated preparation receipt confirms trusted Git drainage; this admission enabled no model or repository tools.' };
+        evidence: 'Validated preparation receipts confirm trusted process drainage; this admission enabled no model or repository tools.' };
     }
     if (!execution?.assessRecovery || execution.mode !== record.execution.mode || execution.model !== record.execution.model) {
       throw new FactoryError('RESUME_UNAVAILABLE', 'The original execution adapter cannot reconcile this run. Retain it until trusted recovery is available.');
@@ -201,6 +210,13 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
       requireRemainingBudget(record, clock.now());
       record.status = 'running';
       records.save(record);
+      if (owned.preparingDependencies) {
+        await prepareRunDependencies({ get: () => get(id), save: records.save, stateDir, dependencyPreparation, signal: controller.signal });
+        record = get(id);
+        record.status = 'blocked';
+        record.outcome = { kind: 'blocked', reviewReady: false, reason: 'MODEL_NOT_READY' };
+        return; // Preparation never dispatches an executor or implicitly enables agent tools.
+      }
       await prepareRunWorkspace({ get: () => get(id), save: records.save, stateDir, workspace, signal: controller.signal });
       record = get(id);
       if (owned.stopReason || controller.signal.aborted) throw new FactoryError('RUN_STOPPING', 'The run is stopping.');
@@ -249,8 +265,8 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
       owned.drained = true;
     }
   }
-  function launch(id, resume = false) {
-    const owned = { id, controller: new AbortController(), stopped: Promise.withResolvers(), drained: false };
+  function launch(id, resume = false, preparingDependencies = false) {
+    const owned = { id, controller: new AbortController(), stopped: Promise.withResolvers(), drained: false, preparingDependencies };
     job = owned;
     owned.timer = clock.setTimeout(() => requestStop(owned, 'RUN_DEADLINE'), Math.max(0, get(id).deadlineAt - clock.now()));
     owned.promise = execute(owned, resume);
@@ -275,6 +291,38 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
       const record = makeRecord(requestId, admittedBrief);
       records.save(record);
       launch(record.id);
+      return structuredClone(record);
+    },
+    async prepareDependencies(id, { bunPath, registry = false } = {}) {
+      assertControl();
+      const record = get(id);
+      if (records.active()) conflict(records.active());
+      if (JSON.stringify(record.project) !== JSON.stringify(project)) throw new FactoryError('PROJECT_MISMATCH', 'Dependency preparation must retain the original project identity.');
+      if (typeof bunPath !== 'string' || resolve(bunPath) !== bunPath || typeof registry !== 'boolean') {
+        throw new FactoryError('INVALID_ARGUMENTS', 'Supply a canonical Bun executable path and an explicit boolean registry choice.');
+      }
+      if (record.execution.mode !== 'production-blocked' || !record.workspace?.receipt || record.execution.submissionId
+        || record.counters.modelAttempts !== 0 || record.counters.toolRounds !== 0 || record.stopRequested || record.replacedByRunId) {
+        throw new FactoryError('DEPENDENCIES_PREPARATION_UNAVAILABLE', 'Explicit preparation requires an unused workspace-only run. No agent work was enabled.');
+      }
+      if (record.dependencies) {
+        if (record.dependencies.status === 'prepared' && record.dependencies.bunPath === bunPath
+          && (record.dependencies.registry ?? false) === registry) {
+          await observeDependencies(record, stateDir);
+          const failure = record.dependencies.inspectionFailure;
+          if (failure) throw new FactoryError(failure.code, failure.message);
+          if (record.dependencies.artifactStatus !== 'prepared') throw new FactoryError('DEPENDENCIES_MISSING', 'Inspect the incomplete bundle. No installation was repeated.');
+          return record;
+        }
+        throw new FactoryError('DEPENDENCIES_EXISTS', 'Inspect the existing dependency attempt. Preparation is never retried implicitly.');
+      }
+      requireRemainingBudget(record, clock.now());
+      record.operation = 'dependency-preparation';
+      record.dependencies = { status: 'pending', bunPath, registry, requestedAt: clock.now() };
+      record.status = 'admitted';
+      record.outcome = null;
+      records.save(record);
+      launch(id, false, true);
       return structuredClone(record);
     },
     async stopRun(id) {
@@ -350,8 +398,8 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
         return structuredClone(replacement);
       });
     },
-    inspectRun: async (id) => observeWorkspace(get(id), stateDir),
-    listRuns: async () => Promise.all(records.list().map((record) => observeWorkspace(record, stateDir))),
+    inspectRun: async (id) => observeDependencies(await observeWorkspace(get(id), stateDir), stateDir),
+    listRuns: async () => Promise.all(records.list().map(async (record) => observeDependencies(await observeWorkspace(record, stateDir), stateDir))),
     close() {
       if (closePromise) return closePromise;
       closing = true;

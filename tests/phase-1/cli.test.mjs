@@ -119,6 +119,27 @@ test('CLI workspace admission exposes exact source, preserves a dirty checkout, 
   assert.deepEqual(await cli(stateDir, 'inspect', admitted.id), prepared);
 });
 
+test('CLI dependency preparation is explicit and refuses an uncontained backend without installation', { timeout: 30_000 }, async (t) => {
+  const { stateDir, briefPath } = await workspace(t);
+  const repository = await repositoryFixture(t);
+  const running = await backend(t, stateDir, ['--prepare-workspace', '--project-path', repository.repositoryPath]);
+  const admitted = await cli(stateDir, 'start', '--request-id', 'dependency-source', '--brief', briefPath);
+  const original = await until(() => cli(stateDir, 'inspect', admitted.id), (run) => run.status === 'blocked');
+  assert.equal(original.dependencies, undefined);
+  await cliError(stateDir, 'INVALID_ARGUMENTS', 'prepare-dependencies', admitted.id);
+  await cli(stateDir, 'prepare-dependencies', admitted.id, '--bun-path', '/home/cowen/.bun/bin/bun', '--fetch-locked-packages');
+  const failed = await until(() => cli(stateDir, 'inspect', admitted.id), (run) => run.status === 'failed');
+  assert.equal(failed.outcome.reason, 'CONTAINMENT_REQUIRED');
+  assert.equal(failed.dependencies.failure.code, 'CONTAINMENT_REQUIRED');
+  assert.equal(failed.dependencies.registry, true);
+  assert.equal(failed.dependencies.intent, undefined);
+  assert.equal(failed.deadlineAt, original.deadlineAt);
+  assert.deepEqual(failed.counters, original.counters);
+  await cliError(stateDir, 'DEPENDENCIES_EXISTS', 'prepare-dependencies', admitted.id, '--bun-path', '/home/cowen/.bun/bin/bun');
+  await running.stop();
+  assert.deepEqual(await cli(stateDir, 'inspect', admitted.id), failed);
+});
+
 test('competing CLI backends are fenced and production never substitutes a fixture', { timeout: 30_000 }, async (t) => {
   const { stateDir, briefPath } = await workspace(t);
   const running = await backend(t, stateDir);
@@ -129,7 +150,7 @@ test('competing CLI backends are fenced and production never substitutes a fixtu
   await running.stop();
 });
 
-test('CLI model preflight is explicit, rejects mixed modes, and blocks without credentials in a disposable home', { timeout: 30_000 }, async (t) => {
+test('CLI model preflight is explicit, rejects mixed modes, and blocks without containment before credential discovery', { timeout: 30_000 }, async (t) => {
   const { stateDir, briefPath } = await workspace(t);
   await cliError(stateDir, 'INVALID_ARGUMENTS', 'serve', '--model-preflight', '--fixture');
   await cliError(stateDir, 'INVALID_ARGUMENTS', 'serve', '--model-preflight', '--prepare-workspace');
@@ -137,10 +158,10 @@ test('CLI model preflight is explicit, rejects mixed modes, and blocks without c
   assert.equal((await cli(stateDir, 'info')).mode, 'model-preflight');
   assert.deepEqual(await cli(stateDir, 'list'), []);
   const run = await cli(stateDir, 'start', '--request-id', 'missing-auth', '--brief', briefPath);
-  const blocked = await until(() => cli(stateDir, 'inspect', run.id), (item) => item.status === 'blocked');
-  assert.equal(blocked.outcome.reason, 'MODEL_AUTH_REQUIRED');
+  const blocked = await until(() => cli(stateDir, 'inspect', run.id), (item) => item.status === 'failed');
+  assert.equal(blocked.outcome.reason, 'CONTAINMENT_REQUIRED');
   assert.equal(blocked.outcome.reviewReady, false);
-  assert.equal(blocked.counters.modelAttempts, 1);
+  assert.equal(blocked.counters.modelAttempts, 0);
   assert.equal(blocked.counters.toolRounds, 0);
   assert.equal(blocked.workspace, undefined);
   await running.stop();

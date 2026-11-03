@@ -3,9 +3,9 @@
 ## Status and scope
 
 The offline implementation started from `49a57c9`. The registry extension starts from `cc515bb` (the integrated offline implementation).
-This extension changes only dependency modules, dependency tests, and this document.
-It leaves containment, application, workspace, model, recovery, CLI, and package files unchanged.
-The parent owns application/CLI intent and receipt persistence and the `createRunTools` handoff.
+The isolated extension changed only dependency modules, dependency tests, and this document.
+The parent subsequently connected application/CLI intent and receipt persistence and the `createRunTools` handoff.
+Package files and the factory dependency graph remain unchanged.
 
 **Offline preparation remains the default. Registry preparation requires separate explicit owner authorization.**
 Offline mode accepts committed local tarballs with matching Bun lock integrity entries.
@@ -47,7 +47,8 @@ const receipt = await prepareDependencies(intent, {
 
 The standalone `prepareOwnerDependencies(intent, options)` wrapper accepts the same options and owns the lock until drainage finishes.
 Admission itself grants no fetch authority. Omitting `authorizeRegistryFetch: true` blocks registry preparation without creating an attempt.
-The unchanged CLI does **not** expose registry authorization. The parent must add its explicit owner flow.
+The standalone intent-file command does not expose registry authorization.
+The parent factory CLI provides that choice only through its explicit `prepare-dependencies ... --fetch-locked-packages` owner operation.
 No start, resume, inspection, verification, check, or agent tool may call preparation implicitly.
 
 Tests pass `registryTransport: { loopbackPort }` to preparation.
@@ -134,8 +135,8 @@ await tools.check('lint');
 await tools.close();
 ```
 
-The parent must add the optional handle to its trusted `createRunTools` adapter input.
-That adapter must retain its existing cumulative reservations, workspace validation, signals, and drainage.
+`createRunTools` now accepts that optional handle through trusted execution input.
+The adapter retains its cumulative reservations, workspace validation, signals, and drainage.
 No owner preparation export belongs in a model tool schema or execution dispatcher.
 
 The handle is process-local and stored in a private `WeakMap`.
@@ -432,12 +433,22 @@ A passing rerun does not resolve that caveat.
 These tests do not establish public-registry TLS/availability, real Vitest/ESLint compatibility, or real Vanguard baseline health.
 No public egress, package install into factory dependencies, host credential access, tracker write, or live model call occurred.
 
+## Parent application checkpoint
+
+The parent now exposes `factory.prepareDependencies(runId, { bunPath, registry })` and the corresponding CLI operation.
+Offline preparation remains the default. `--fetch-locked-packages` is an explicit owner choice, saved before dependency admission.
+The application retains intent and receipts, original deadlines/counters, stop/shutdown drainage, and interrupted-preparation fencing.
+`createRunTools` forwards only verified opaque bundle handles.
+See the [application record](dependency-application.md) for lifecycle tests, registry opt-in, and later-workspace reuse evidence.
+
+The parent dependency/application selection passed **27/27** after this wiring.
+Independent registry review and combined containment acceptance remain pending.
+
 ## Remaining integration and compatibility gates
 
 - Investigate the intermittent descendant-cleanup failure before enabling real agent execution. This slice does not resolve that containment caveat.
-- The parent must persist dependency intents/receipts and pass the validated handle through `createRunTools`.
-- The parent must retain its application ownership, original deadlines, recovery fencing, and tool-budget controls.
-- The parent must expose registry fetching only through an explicit owner operation with saved intents, receipts, deadlines, and reservations.
+- Preserve the application's intent/receipt ordering, lifetime ownership, original deadlines, recovery fencing, and tool-budget controls.
+- Keep registry acquisition owner-only. A package, agent tool, or repeated failed request cannot authorize fetching.
 - The production fixed-registry transport exists but has not made a public request. Production/public requests remain unauthorized in this task.
 - Real Vanguard Bun lock syntax, transitive packages, Vitest, and ESLint remain unverified and may fail the conservative policy.
 - Broader Bun lock features require explicit validation and tests. Do not weaken the parser or enable Bun networking as a compatibility fallback.

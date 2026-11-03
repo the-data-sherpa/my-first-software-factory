@@ -8,7 +8,7 @@ import { createContainedExecution, verifyContainmentEnvelope } from './containme
  * never from model arguments. Each bounded operation conservatively consumes one tool round.
  * The caller must join close() before returning from start/resume failure or finalization.
  */
-export async function createRunTools({ directory, run, budget, signal }) {
+export async function createRunTools({ directory, run, budget, signal, dependencyBundle }) {
   budget.assertActive();
   const intent = run.workspace?.intent;
   const admitted = run.workspace?.receipt;
@@ -25,7 +25,7 @@ export async function createRunTools({ directory, run, budget, signal }) {
   budget.assertActive();
   const receiptDirectory = await privateDirectory(join(directory, 'checks'), { mustBeWithin: intent.stateDir });
   const reservation = budget.reserveToolRound({ roundId: `verify:${randomUUID()}` });
-  const tools = await createContainedExecution({ worktree: actual.worktree, receiptDirectory, signal });
+  const tools = await createContainedExecution({ worktree: actual.worktree, receiptDirectory, signal, dependencyBundle });
   try {
     budget.settle(reservation.id, JSON.stringify({ kind: 'containment-verification', receipt: tools.verification.receipt, sourceDigest: tools.verification.sourceDigest }));
   } catch (error) { await tools.close(); throw error; }

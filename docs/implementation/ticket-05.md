@@ -142,6 +142,9 @@ Ordinary serving remains production-blocked.
 
 `createOwnerModelPreflight` constructs the adapter without discovering credentials.
 Only its admitted `start` creates Pi's `ModelRuntime` through the existing credential integration.
+That owner path first verifies the live foreground resource scope. An uncontained start fails before credential discovery or request dispatch.
+The controlled owner-startup tests now run in the actual accepted scope.
+The lower-level injected-runtime request interface remains available for controlled module tests.
 Catalog refresh and network discovery stay disabled. User model overrides and extensions are not loaded.
 Inspection, duplicate admission, recovery assessment, and backend reopen do not create a runtime.
 Stop during initialization holds admission until initialization returns and prevents subsequent request dispatch.

@@ -235,6 +235,7 @@ npm run factory -- start --request-id model-smoke-001 --brief /absolute/path/to/
 ```
 
 Starting this backend does not discover credentials or issue a request. Only an admitted `start` creates Pi's `ModelRuntime`.
+That owner operation requires the live foreground resource scope before credential discovery. A plain, uncontained backend refuses it.
 The selected route is `openai/gpt-6.1-sol`, with explicit low reasoning and cap-compatible API-key authentication.
 OAuth, missing credentials, unsupported caps, and provider failures block instead of choosing another route.
 The smoke allows one attempt, at most 1,024 requested output tokens, and a 60-second complete-stream deadline.
@@ -272,6 +273,31 @@ Restore refuses archives containing workspace identities before creating a desti
 Fixture-only backup/restore remains supported. Retain the original workspace and archive until explicit cleanup.
 See the [workspace implementation record](docs/implementation/ticket-04.md) for supported source features and retention behavior.
 
+## Explicit dependency preparation
+
+Ticket #6 remains under review. Controlled preparation supports committed offline tarballs and a limited locked-registry grammar with transitive dependencies.
+Real Vanguard tooling is unverified. The reported descendant-cleanup failure also remains an execution gate.
+
+With a workspace-only backend inside the foreground resource scope, prepare an admitted run explicitly:
+
+```bash
+npm run factory -- prepare-dependencies RUN_ID --bun-path /absolute/canonical/path/to/bun
+npm run factory -- inspect RUN_ID
+```
+
+Offline preparation is the default. An explicit `--fetch-locked-packages` flag permits only the supported locked registry acquisition path.
+That option can make public requests in production. Tests used only controlled local registry fixtures.
+Unknown lock features, arbitrary registries, and supplied archive URLs fail closed.
+
+The application saves the owner choice and intent before acquisition or installation, then saves the verified receipt before any later executor can use it.
+It retains the original deadline and counters, excludes other active work, and drains preparation on stop or shutdown.
+Preparation does not run an agent. Success still leaves the run `blocked / MODEL_NOT_READY`.
+Inspection and ordinary start never install. Failed or incomplete attempts do not retry implicitly.
+
+A crashed installer stays interrupted. A completed source workspace alone cannot justify stop or replacement without dependency-quiescence evidence.
+Dependency bundles with Bun `.bin` links cannot use the existing backup path. Keep their private state until explicit cleanup.
+See the [dependency application record](docs/implementation/dependency-application.md) for lifecycle evidence and remaining gates.
+
 ## Contained execution tools
 
 The execution interface verifies the live foreground scope and actual bubblewrap launcher before exposing bounded file tools.
@@ -286,7 +312,8 @@ The factory retains diagnostic receipts outside editable source. A passing diagn
 
 `createRunTools` binds these tools to the run's saved workspace, cancellation signal, and cumulative budget.
 It conservatively charges each bounded operation as one tool round and drains before releasing ownership.
-Repository Vitest/lint checks remain blocked with `DEPENDENCIES_NOT_PREPARED` until ticket #6 adds a verified private dependency bundle.
+Repository Vitest/lint checks require a verified private dependency handle. Without one, they reject with `DEPENDENCIES_NOT_PREPARED`.
+Controlled installed packages exercise this handoff and its read-only mounts, not real Vanguard test or lint compatibility.
 Production-model admission and agent tool registration remain later gates. No real Vanguard toolchain compatibility is claimed yet.
 See the [containment implementation record](docs/implementation/ticket-03.md) for verification evidence and host restrictions.
 A later #6 test exposed an intermittent descendant-cleanup failure. Investigation remains open, so real agent execution stays disabled.

@@ -3,7 +3,10 @@ import test from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fork } from 'node:child_process';
+import { fork, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
 import { openFactory, inspectHistory } from '../../src/factory.mjs';
 import { createModelExecution, inspectExecution } from '../../src/execution.mjs';
@@ -22,61 +25,52 @@ async function setup(t, reply, options = {}) {
   return { factory, stateDir, execution, ...transport };
 }
 
-test('owner model startup loads no runtime until an admitted start and never on passive reopening', async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), 'factory-owner-model-'));
-  const stateDir = join(directory, 'state');
-  const project = { id: 'vanguard', repositoryPath: join(directory, 'unread-repository') };
-  const transport = controlledTransport();
+test('owner model preflight refuses credential initialization outside the verified resource scope', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'factory-owner-envelope-'));
   let creations = 0;
-  let factory;
-  const execution = executionApi.createOwnerModelPreflight({ fetch: transport.fetch, createRuntime: async (options) => {
-    creations++;
-    assert.equal((await factory.listRuns())[0].status, 'running');
-    assert.equal(options.refreshOnCreate, false);
-    assert.equal(options.allowModelNetwork, false);
-    assert.equal(options.modelsPath, null);
-    return controlledRuntime();
-  } });
-  factory = await openFactory({ stateDir, project, execution });
+  const execution = executionApi.createOwnerModelPreflight({ createRuntime: async () => { creations++; return controlledRuntime(); },
+    fetch: controlledTransport().fetch });
+  const factory = await openFactory({ stateDir: join(directory, 'state'), execution });
   t.after(async () => { await factory.close(); await rm(directory, { recursive: true, force: true }); });
-  assert.deepEqual(await factory.listRuns(), []);
+  const admitted = await factory.startRun({ requestId: 'uncontained-owner-smoke', brief });
+  const failed = await until(() => factory.inspectRun(admitted.id), (run) => ['failed', 'completed'].includes(run.status));
+  assert.equal(failed.outcome.reason, 'CONTAINMENT_REQUIRED');
   assert.equal(creations, 0);
-  const run = await factory.startRun({ requestId: 'explicit-owner-smoke', brief });
-  const done = await until(() => factory.inspectRun(run.id), (item) => item.status === 'completed');
-  assert.equal(done.outcome.kind, 'model-preflight-completed');
+  assert.equal(failed.counters.modelAttempts, 0);
+});
+
+async function ownerScenario(t, scenario) {
+  const directory = await mkdtemp(join(tmpdir(), 'factory-owner-model-'));
+  const unit = `factory-contained-${randomUUID()}.scope`;
+  const exec = promisify(execFile);
+  t.after(async () => {
+    await exec('/usr/bin/systemctl', ['--user', 'stop', unit]).catch(() => {});
+    await exec('/usr/bin/systemctl', ['--user', 'reset-failed', unit]).catch(() => {});
+    await rm(directory, { recursive: true, force: true });
+  });
+  const worker = fileURLToPath(new URL('./model-owner-worker.mjs', import.meta.url));
+  const { stdout } = await exec('/usr/bin/systemd-run', ['--user', '--scope', '--quiet', '--collect', `--unit=${unit}`,
+    '--property=MemoryMax=4294967296', '--property=MemorySwapMax=0', '--property=TasksMax=256', '--property=OOMPolicy=kill',
+    '--', process.execPath, worker, directory, scenario], { timeout: 15_000,
+    env: { PATH: '/usr/bin:/bin', HOME: directory, XDG_RUNTIME_DIR: `/run/user/${process.getuid()}`,
+      DBUS_SESSION_BUS_ADDRESS: `unix:path=/run/user/${process.getuid()}/bus` },
+  });
+  return JSON.parse(stdout);
+}
+
+test('owner model startup loads no runtime until an admitted start and never on passive reopening', async (t) => {
+  const { run, creations, dispatches } = await ownerScenario(t, 'lazy');
+  assert.equal(run.outcome.kind, 'model-preflight-completed');
   assert.equal(creations, 1);
-  assert.equal(transport.requests.length, 1);
-  await factory.close();
-  assert.deepEqual(await inspectHistory({ stateDir, runId: run.id }), done);
-  factory = await openFactory({ stateDir, project, execution });
-  assert.deepEqual(await factory.startRun({ requestId: 'explicit-owner-smoke', brief }), done);
-  assert.deepEqual(await factory.inspectRun(run.id), done);
-  assert.equal(creations, 1);
-  assert.equal(transport.requests.length, 1);
+  assert.equal(dispatches, 1);
 });
 
 test('stop during owner runtime initialization holds admission until startup drains and dispatches no model request', async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), 'factory-owner-startup-'));
-  const entered = Promise.withResolvers();
-  const release = Promise.withResolvers();
-  const transport = controlledTransport();
-  const execution = executionApi.createOwnerModelPreflight({ fetch: transport.fetch, createRuntime: async ({ signal }) => {
-    entered.resolve(signal);
-    await release.promise;
-    return controlledRuntime();
-  } });
-  const factory = await openFactory({ stateDir: join(directory, 'state'), execution });
-  t.after(async () => { release.resolve(); await factory.close(); await rm(directory, { recursive: true, force: true }); });
-  const run = await factory.startRun({ requestId: 'initializing', brief });
-  const signal = await entered.promise;
-  const stopping = factory.stopRun(run.id);
-  assert.equal(signal.aborted, true);
-  await assert.rejects(factory.startRun({ requestId: 'cannot-overlap-initialization', brief }), { code: 'RUN_ACTIVE' });
-  release.resolve();
-  const stopped = await stopping;
-  assert.equal(stopped.status, 'stopped');
-  assert.equal(stopped.counters.modelAttempts, 0);
-  assert.equal(transport.requests.length, 0);
+  const { run, creations, dispatches } = await ownerScenario(t, 'stop');
+  assert.equal(run.status, 'stopped');
+  assert.equal(run.counters.modelAttempts, 0);
+  assert.equal(creations, 1);
+  assert.equal(dispatches, 0);
 });
 
 test('crashed production-adapter work inspects passively and fails closed on resume without changing submission identity or allowances', async (t) => {

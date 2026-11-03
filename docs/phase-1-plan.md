@@ -273,8 +273,11 @@ Its independent safety review found a startup-drain ownership defect and a dispo
 Both corrections passed their regressions. The model, CLI, factory, and recovery suites passed **63/63** after integration.
 See the [ticket #5 record](implementation/ticket-05.md) for limits and evidence.
 
-Ticket #6 currently supplies offline Bun preparation and verified read-only reuse with controlled packages.
-Registry/transitive support and application integration remain incomplete.
+Ticket #6 supplies offline Bun preparation, explicit locked-registry acquisition, and verified read-only reuse with controlled packages.
+The application now retains explicit preparation intent, receipts, cancellation, crash fencing, and the original budget.
+The CLI exposes that owner operation separately from start and agent tools.
+Registry fixtures cover transitive, scoped, and nested versions without giving Bun network access.
+The lifecycle integration review found no concrete defects. Independent registry review and combined verification remain pending.
 Its test run also exposed an intermittent descendant-cleanup failure. Later passes do not resolve that failure.
 Real agent execution stays disabled while that investigation remains open.
 

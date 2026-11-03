@@ -15,8 +15,8 @@ const safeError = (error) => error instanceof FactoryError
 const options = {
   'state-dir': { type: 'string', default: DEFAULT_STATE_DIR },
   fixture: { type: 'boolean' }, 'fixture-delay-ms': { type: 'string' }, 'prepare-workspace': { type: 'boolean' },
-  'model-preflight': { type: 'boolean' },
-  'project-path': { type: 'string' }, 'request-id': { type: 'string' },
+  'model-preflight': { type: 'boolean' }, 'fetch-locked-packages': { type: 'boolean' },
+  'project-path': { type: 'string' }, 'request-id': { type: 'string' }, 'bun-path': { type: 'string' },
   brief: { type: 'string' }, 'brief-text': { type: 'string' },
   to: { type: 'string' }, from: { type: 'string' }, review: { type: 'string' },
 };
@@ -55,7 +55,7 @@ async function serve(values) {
         if (request.method === 'GET' && /^\/runs\/run_[a-f0-9-]+$/.test(request.url)) {
           return send(response, 200, await factory.inspectRun(request.url.slice('/runs/'.length)));
         }
-        const control = request.url.match(/^\/runs\/(run_[a-f0-9-]+)\/(stop|resume|replace)$/);
+        const control = request.url.match(/^\/runs\/(run_[a-f0-9-]+)\/(stop|resume|replace|prepare-dependencies)$/);
         if (request.method === 'POST' && (request.url === '/runs' || control)) {
           const chunks = [];
           let size = 0;
@@ -68,7 +68,8 @@ async function serve(values) {
           try { input = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
           catch { throw new FactoryError('INVALID_ARGUMENTS', 'Supply a JSON admission request.'); }
           if (!input || typeof input !== 'object' || Array.isArray(input)) throw new FactoryError('INVALID_ARGUMENTS', 'Supply a JSON admission object.');
-          const result = control ? await factory[`${control[2]}Run`](control[1], input) : await factory.startRun(input);
+          const result = control ? await factory[control[2] === 'prepare-dependencies' ? 'prepareDependencies' : `${control[2]}Run`](control[1], input)
+            : await factory.startRun(input);
           return send(response, 200, result);
         }
         throw new FactoryError('INVALID_COMMAND', 'Unknown factory operation.');
@@ -150,11 +151,11 @@ try {
   const allowed = {
     serve: ['fixture', 'fixture-delay-ms', 'project-path', 'prepare-workspace', 'model-preflight'],
     start: ['request-id', 'brief', 'brief-text'], inspect: [], list: [], info: [],
-    stop: [], resume: ['review'], replace: ['request-id', 'review'],
+    stop: [], resume: ['review'], replace: ['request-id', 'review'], 'prepare-dependencies': ['bun-path', 'fetch-locked-packages'],
     backup: ['to'], restore: ['from'],
   };
-  if (!allowed[command] || positionals.length !== (['inspect', 'stop', 'resume', 'replace'].includes(command) ? 2 : 1)) {
-    throw new FactoryError('INVALID_COMMAND', 'Use serve, start, inspect RUN_ID, stop RUN_ID, resume RUN_ID --review TEXT, replace RUN_ID --request-id ID --review TEXT, list, info, backup, or restore.');
+  if (!allowed[command] || positionals.length !== (['inspect', 'stop', 'resume', 'replace', 'prepare-dependencies'].includes(command) ? 2 : 1)) {
+    throw new FactoryError('INVALID_COMMAND', 'Use serve, start, inspect RUN_ID, stop RUN_ID, resume RUN_ID --review TEXT, replace RUN_ID --request-id ID --review TEXT, prepare-dependencies RUN_ID --bun-path PATH, list, info, backup, or restore.');
   }
   for (const key of Object.keys(values)) {
     if (key !== 'state-dir' && !allowed[command].includes(key)) throw new FactoryError('INVALID_ARGUMENTS', 'An option does not apply to this command.');
@@ -166,7 +167,8 @@ try {
     const stateDir = values['state-dir'];
     try {
       if (command === 'start') print(await request(stateDir, 'POST', '/runs', { requestId: values['request-id'], brief: await readBrief(values) }));
-      else if (['stop', 'resume', 'replace'].includes(command)) print(await request(stateDir, 'POST', `/runs/${encodeURIComponent(runId)}/${command}`, { review: values.review, requestId: values['request-id'] }));
+      else if (['stop', 'resume', 'replace', 'prepare-dependencies'].includes(command)) print(await request(stateDir, 'POST', `/runs/${encodeURIComponent(runId)}/${command}`,
+        { review: values.review, requestId: values['request-id'], bunPath: values['bun-path'], registry: values['fetch-locked-packages'] ?? false }));
       else print(await request(stateDir, 'GET', command === 'info' ? '/health' : command === 'list' ? '/runs' : `/runs/${encodeURIComponent(runId)}`));
     } catch (error) {
       if (!['ENOENT', 'ECONNREFUSED'].includes(error.code)) throw error;

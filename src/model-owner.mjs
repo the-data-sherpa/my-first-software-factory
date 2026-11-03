@@ -3,6 +3,7 @@ import { InMemoryModelsStore } from '@earendil-works/pi-ai';
 import { FactoryError } from './storage.mjs';
 import { MODEL_ROUTE } from './model.mjs';
 import { createModelExecution } from './model-execution.mjs';
+import { verifyContainmentEnvelope } from './containment.mjs';
 
 /** Owner-only opt-in. Construction and recovery never discover credentials. Only an
  * admitted start creates Pi's runtime, with its existing credential integration.
@@ -12,6 +13,9 @@ export function createOwnerModelPreflight({ createRuntime = (options) => ModelRu
   return Object.freeze({
     mode: 'model-preflight', model: MODEL_ROUTE,
     async start(input) {
+      input.budget.assertActive();
+      try { await verifyContainmentEnvelope(); }
+      catch { throw new FactoryError('CONTAINMENT_REQUIRED', 'Model preflight requires the verified foreground resource scope. No credentials were loaded.'); }
       input.budget.assertActive();
       let modelRuntime;
       try {
