@@ -18,8 +18,14 @@ let reporter;
 if (reported && scenario !== 'ignored-reporter') {
   const Reporter = (await import(option('--reporter'))).default;
   reporter = new Reporter();
+  // Vitest 4.0.17 resolves fileParallelism:false to maxWorkers:1, even when
+  // --maxWorkers=2 was supplied. Exercise resolved config, not requested limits.
+  const fileParallelism = !argv.includes('--no-file-parallelism') && config.fileParallelism !== false;
   reporter.onInit({ version: JSON.parse(readFileSync('/work/node_modules/vitest/package.json')).version,
-    config: { ...config, watch: false, maxWorkers: 2, retry: 0, allowOnly: false, passWithNoTests: false } });
+    config: { ...config, watch: false,
+      fileParallelism: scenario === 'runner-file-parallelism' ? true : fileParallelism,
+      maxWorkers: scenario === 'runner-worker-count' ? 2 : fileParallelism ? 2 : 1,
+      retry: 0, allowOnly: false, passWithNoTests: false } });
   reporter.onTestRunStart([]);
 }
 const modules = []; let failed = false;

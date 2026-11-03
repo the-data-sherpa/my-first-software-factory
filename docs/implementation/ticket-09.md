@@ -428,3 +428,41 @@ The scopes are drained. The indexed private artifacts remain for explicit owner 
 Package files, dependency graph, runtime pins, contract, shared application modules, design documents, glossary, and ADRs are unchanged.
 The temporary link to existing factory dependencies was removed before commit.
 No parent checkout or other child checkout was modified. No subagent, tracker write, push, real target execution, or production-model request occurred.
+
+## Parent follow-up: resolved serial-worker configuration
+
+The parent found another reporter conflict at `a6f5c88`.
+All qualification commands disable file parallelism, but the reporter required `ctx.config.maxWorkers === 2`.
+The retained [Vitest 4.0.17 config contract](https://github.com/vitest-dev/vitest/blob/v4.0.17/packages/vitest/src/node/types/config.ts) states that disabling file parallelism overrides `maxWorkers` to `1`.
+The synthetic framework had hidden this mismatch by always supplying `2` to `onInit`.
+
+The parent first reran the candidate-tautology and valid-extra-literal cases: both passed their existing expectations.
+Changing only the fixture's resolved-config behavior then made the valid regression fail with `blocked / REGRESSION_UNVERIFIED`.
+The actual emitted reporter rejected the runtime during `onInit`; its retained check log records `Unsupported qualification runtime`.
+This is a controlled adapter-contract reproduction, not execution of the fetched source or the real Vitest package.
+
+The correction requires serial execution and one resolved worker, within the accepted two-worker maximum.
+The report retains both settings, and its reader validates them.
+The fixture models the documented resolution rule instead of the requested CLI limit.
+Negative cases reject an inconsistent worker count and unexpected file parallelism.
+The same positive reproduction now passes. Candidate tautologies remain rejected, and valid additional literals still qualify only as controlled evidence.
+
+Parent verification in this isolated branch:
+
+- Original positive/negative comparison: **2/2**.
+- Documented resolved-config reproduction: red before the reporter fix, green afterward.
+- Focused candidate/config cases: **4/4**.
+- Complete qualification suite: **65/65**, with no skips or exclusions.
+- Existing browser regression: **1/1**.
+- Independent audit: **73/73** recorded exact scopes inactive and empty, including the red reproduction.
+- Syntax, whitespace, and unchanged dependency/runtime checks passed; the temporary dependency symlink was removed.
+
+Evidence and retained fixture indexes are under `/tmp/factory-ticket09-parent-workers/`.
+`red.log`, `red/input.json`, and `red/result.json` identify the failed run and its actual reporter output.
+`green.log`, `focused.log`, `qualification.log`, and `scope-audit.json` record the correction checks.
+The parent did not repeat all 223 unrelated baseline tests in this branch; the prior **286/286** full result remains historical, not a new combined result.
+No real target, live model, external request, package installation, tracker write, or push occurred.
+
+The separate admission `--minWorkers=1` conflict remains unresolved.
+Ticket #9 is still not integrated into the parent checkout or accepted.
+Actual executor composition, work-item persistence, combined verification, and independent qualification review remain pending.

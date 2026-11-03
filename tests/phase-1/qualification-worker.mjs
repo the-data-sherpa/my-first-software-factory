@@ -163,6 +163,11 @@ const execution = { ...admission, async start(input) {
     if (scenario.startsWith('candidate-') && !['candidate-valid-literal', 'candidate-stale-live'].includes(scenario)) assert.equal(final.reason, 'REGRESSION_UNVERIFIED');
     if (scenario === 'final-lint') assert.equal(final.reason, 'FINAL_LINT_FAILED');
     if (scenario === 'final-vitest') assert.equal(final.reason, 'FINAL_VITEST_FAILED');
+    if (['runner-worker-count', 'runner-file-parallelism'].includes(scenario)) assert.equal(final.reason, 'REGRESSION_UNVERIFIED');
+    if (['green', 'candidate-valid-literal'].includes(scenario)) {
+      assert.equal(run.qualification.runtime.maxWorkers, 1);
+      assert.equal(run.qualification.runtime.fileParallelism, false);
+    }
     if (scenario === 'green') {
       assert.equal(passive.status, 'qualified'); assert.equal(passive.artifactStatus, 'verified');
       assert.equal(run.qualification.checks.length, 10);

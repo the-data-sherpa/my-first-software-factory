@@ -10,7 +10,7 @@ for (const scenario of ['green', 'candidate-tautology', 'candidate-unrelated', '
   'crash', 'wrong-case', 'wrong-assertion', 'malformed', 'skipped', 'no-tests', 'unrelated-error', 'final-vitest', 'final-lint', 'final-no-tests', 'final-skipped',
   'owner-advance', 'executable-base', 'deleted-file', 'mode-change', 'hidden-change', 'incomplete',
   'ignored-reporter', 'unsupported-version', 'report-stdout', 'report-truncated', 'report-duplicate', 'report-overflow', 'report-missing-events', 'report-inconsistent',
-  'probe-empty-passes', 'probe-skips-run', 'final-missing-candidate', 'final-renamed-candidate',
+  'probe-empty-passes', 'probe-skips-run', 'runner-worker-count', 'runner-file-parallelism', 'final-missing-candidate', 'final-renamed-candidate',
   'stale-overlay', 'stale-candidate', 'stale-report', 'stop-finalization',
   'stale-source', 'stale-patch', 'stale-test', 'stale-toolchain', 'stale-check', 'stale-profile', 'missing-new-file',
   'late-source', 'tool-limit', 'stop', 'deadline', 'report-failure', 'drain-report', 'crash-inspect']) {

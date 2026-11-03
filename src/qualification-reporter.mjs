@@ -14,10 +14,11 @@ export default class QualificationReporter {
     const pkg = JSON.parse(bytes);
     const c = ctx.config;
     if (pkg.name !== 'vitest' || pkg.version !== '4.0.17' || ctx.version !== pkg.version
-      || process.versions.node !== '24.21.0' || c.watch !== false || c.maxWorkers !== 2
+      || process.versions.node !== '24.21.0' || c.watch !== false || c.maxWorkers !== 1 || c.fileParallelism !== false
       || c.retry !== 0 || c.allowOnly !== false || c.passWithNoTests !== false
       || (binding.operation !== 'qualification-vitest' && c.expect.requireAssertions !== true)) throw new Error('Unsupported qualification runtime');
-    this.runtime = { node: process.versions.node, vitest: ctx.version, manifestDigest: digest(bytes) };
+    this.runtime = { node: process.versions.node, vitest: ctx.version, manifestDigest: digest(bytes),
+      maxWorkers: c.maxWorkers, fileParallelism: c.fileParallelism };
   }
   onTestRunStart() {
     if (this.started || !this.runtime) throw new Error('Duplicate or uninitialized test run');
