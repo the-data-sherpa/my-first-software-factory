@@ -2,11 +2,11 @@
 
 ## Status
 
-This is a project plan, not a working application. No code, dependencies, credentials, or schedules have been installed.
+Phase 0 evaluation is complete, with runnable verification probes, [findings](docs/phase-0-findings.md), and an [accepted integration decision](docs/adr/0001-embed-pi-durable.md). This is not yet a working factory. Dependencies are pinned locally. No credentials, services, or schedules have been installed or changed.
 
-The first factory's job is chosen: maintaining the [`crewroom`](https://github.com/the-data-sherpa/crewroom) repository. The plan uses `@earendil-works/pi-durable`, the library behind [Durable Pi](https://github.com/disler/durable-pi), as the proposed foundation for persistent agents. Phase 0 verifies that choice.
+The factory's job is repository maintenance, starting with [`vanguard`](https://github.com/the-data-sherpa/vanguard) as its first project. Vanguard replaces `crewroom` by the owner's decision on 2026-11-02. The restart gate passes for `@earendil-works/pi-durable` 1.5.0. The owner accepted direct embedding with SQLite and Pi's `ModelRuntime`, rather than adopting Durable Pi's applications. The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including outcome-first execution. A complexity classifier and specialist team are not required. Implementation has not started. Live inference with the owner's credentials remains unverified.
 
-Terms used in this plan are defined in [GLOSSARY.md](GLOSSARY.md).
+Terms used in this plan are defined in [CONTEXT.md](CONTEXT.md). [ADR 0002](docs/adr/0002-one-factory-many-projects.md) records the owner's choice of one factory managing multiple projects, not a factory per project. Each run and work item belongs to one project.
 
 ## Motivation
 
@@ -25,9 +25,9 @@ This plan is inspired by IndyDevDan's [Tiny Software Factories video](https://ww
 5. **Human supervision.** The factory prepares work independently and requests approval for consequential actions.
 6. **Agent access parity.** Where practical, the agent and the UI use the same underlying operations, subject to permissions.
 
-## First factory: repository maintenance for `crewroom`
+## First factory: repository maintenance
 
-The factory maintains one repository, [`the-data-sherpa/crewroom`](https://github.com/the-data-sherpa/crewroom).
+The initial project is [`the-data-sherpa/vanguard`](https://github.com/the-data-sherpa/vanguard). The same factory must support simultaneous work across multiple projects in a future phase. Phase 1 remains limited to Vanguard and one active run total.
 
 **Output.** Each run produces at most one work item: a small task chosen from open issues, the roadmap, or recent commits. The work item contains:
 
@@ -35,7 +35,11 @@ The factory maintains one repository, [`the-data-sherpa/crewroom`](https://githu
 - A plan.
 - A draft change in a git worktree, with test results.
 
-**Usefulness.** A work item is useful if the approver would approve it with minor edits or none. The factory meets its goal if the approver approves 3 of its first 5 work items.
+For Phase 1, the person supplies a short task brief with a goal, acceptance criteria, and evidence; the factory saves its immutable snapshot. URLs are citations, not permission to fetch context. Autonomous selection from issues, roadmaps, or commits is deferred. The first demonstration is Vanguard's address-whitespace normalization helper with focused regression tests, not a stored-data backfill. The successful demonstration must include a real local draft change, test results, and an outcome, not just a transcript. No-change, blocked, and failed runs retain their evidence and partial drafts but do not count as that demonstration.
+
+**Outcome-first execution.** The owner defines the desired result and constraints; the factory owns planning and execution. Phase 1 starts with one accountable executor and runner-backed verification. Complexity scoring, specialist teams, and stage-specific model routing are possible later techniques, not required architecture or a workflow the owner must configure.
+
+**Usefulness.** A work item is useful if the owner would use its draft with minor edits or none. The factory meets its goal if 3 of its first 5 work items meet that standard. This quality assessment is not a proposal-specific Approval.
 
 **Actions.**
 
@@ -49,7 +53,9 @@ The factory maintains one repository, [`the-data-sherpa/crewroom`](https://githu
 
 ## Proposed workspace
 
-The first UI can use a three-part layout:
+Phase 1 uses a manually started foreground backend and a separate CLI for starting, inspecting, and stopping runs. Closing the CLI does not stop a run while the backend remains alive. A second start request is rejected while a run is active; it is not queued.
+
+The web UI is an explicit Phase 2 deliverable. It can use a three-part layout:
 
 ```text
 +--------------------------------------------------------------+
@@ -65,7 +71,7 @@ The first UI can use a three-part layout:
 +----------------+----------------------------+----------------+
 ```
 
-This is a design sketch, not a requirement to copy the video UI. A simpler interface is acceptable for the first working run.
+This is a design sketch, not a requirement to copy the video UI. The Phase 1 CLI does not replace the planned Phase 2 web workspace.
 
 ## Proposed architecture
 
@@ -91,13 +97,13 @@ Manual request, schedule, or event
 | Part | Responsibility |
 | --- | --- |
 | Factory configuration | Define the purpose, workspace, tools, model, schedule, and approval rules. |
-| Agent runtime | Embed `pi-durable` in a small backend, following the pattern of Durable Pi's `proactive-dpi-demo`. Use the existing local `pi` model configuration and credentials. Do not adopt Durable Pi's multi-machine hub. |
-| Work store | Keep work items, runs, messages, decisions, and artifacts. SQLite is a candidate. |
-| Scheduler | Built into the backend. Store schedules with runs, start each due run with an idempotency key, and allow pause and run-now. After downtime, start one catch-up run and record the skipped slots. A systemd user service keeps the backend running. |
-| Web interface | Show the work and let the person communicate, start runs, approve, and reject. |
-| Sandbox | Phases 0 to 2: one git worktree per run (managed with [Worktrunk](https://worktrunk.dev/)) and `beforeTool` hooks that block forbidden commands. Before unattended scheduled runs in Phase 3: add process isolation, for example `bubblewrap`. |
+| Agent runtime | Accepted foundation: embed pinned `pi-durable` 1.5.0 in a small backend with Pi's `ModelRuntime` for local model configuration and credentials. Implementation starts in Phase 1. Reuse the pattern of `proactive-dpi-demo`, not its 1.0.3 API calls or OpenRouter wiring. Do not adopt the multi-machine hub. |
+| Work store | [ADR 0005](docs/adr/0005-isolate-execution-stores-per-run.md): use one factory-level SQLite record store and a separate durable execution store/session per run. Keep project/run identity and application outcomes in the factory store, referencing execution receipts and artifacts. Add review messages and proposal decisions in Phase 2. |
+| Scheduler | Phase 3: build scheduling into the backend. Store schedules with runs, start each due run with an idempotency key, and allow pause and run-now. After downtime, start one catch-up run and record the skipped slots. A systemd user service keeps the backend running. Phase 1 installs no service. |
+| Web interface | Phase 2: show the work and let the person communicate, start runs, approve, and reject. |
+| Execution boundary | Use plain Git for one worktree per run; do not install Worktrunk in Phase 1. Hooks enforce policy but are not a sandbox. [ADR 0003](docs/adr/0003-contain-repository-tools-in-phase-1.md) requires verified containment before repository tools, not just before unattended execution. Limit read/edit access and expose a fixed-command, direct-argv check runner without host-private mounts or tool network access. Verify the actual Vanguard toolchain and parent-death cleanup before use. |
 
-These are responsibilities, not a commitment to build six separate services. `pi-durable` provides checkpointed runs, tool replay rules, and durable approval waits. It does not provide a scheduler or a sandbox.
+These are responsibilities, not a commitment to build six separate services. `pi-durable` provides checkpointed tasks, tool replay rules, and durable sleeps. The factory builds its approval protocol on those primitives. The library does not provide an approval service, scheduler, or sandbox.
 
 ## Persistence and recovery
 
@@ -105,49 +111,72 @@ A process that runs after the browser closes is useful, but that alone does not 
 
 The factory must record run state and make interruptions visible. Do not assume retries are safe. A repeated read may be harmless, while a repeated message, pull request, or other side effect can create duplicates. Define retry and deduplication behavior for each consequential action.
 
+[ADR 0004](docs/adr/0004-operator-controlled-recovery.md) requires passive inspection after a crash, with no automatic execution. Explicit resume requires review of partial effects, verified containment, and remaining original limits. It never resets the run's budget. If safe resume is unavailable or limits are exhausted, require an explicit new linked run. Stop and graceful backend shutdown cancel active work, retain artifacts, and record a terminal stopped result.
+
 ## Safety defaults
 
 - Give each factory only the filesystem access, tools, network access, and credentials it needs.
 - Run untrusted or agent-generated commands in a restricted sandbox. Confirm the sandbox's actual isolation before relying on it.
 - Require explicit approval before publishing, sending messages, deploying, or changing external systems.
 - Do not let the agent change its permissions or approval rules without human authorization.
-- Keep an audit trail of prompts, tool calls, proposals, decisions, and outcomes. Avoid storing secrets in logs.
-- Set limits for run duration, model spend, concurrency, and scheduled execution.
+- Keep an audit trail of prompts, tool calls, proposals, decisions, and outcomes. Avoid storing secrets in logs. Keep runtime state, transcripts, patches, check logs, and worktrees outside the public repository until explicit owner cleanup. Phase 1 performs no automatic deletion, publishing, or draft commits.
+- Set limits for run duration, model spend, concurrency, and scheduled execution. Phase 1 enforces operational limits and labels cost as reported, estimated, or unknown. It makes no hard billing-cap claim.
 - Show failed and interrupted runs. Provide a way to pause schedules and stop work.
 
 ## Build stages
 
 ### 0. Choose a job and examine Durable Pi
 
-The job is chosen (see [First factory](#first-factory-repository-maintenance-for-crewroom)). The remaining work verifies `pi-durable` 1.5.0 against that job.
+The job is chosen (see [First factory](#first-factory-repository-maintenance)). The 1.5.0 verification probes pass:
 
-- Run Durable Pi's documented local example in a git worktree.
-- Confirm that `pi-durable` can use the existing local `pi` credentials and `models.json`, including the `local-ai` provider, without OpenRouter.
-- Verify the following, with the faux model where possible:
-  1. A manual run survives `kill -9` and resumes.
-  2. An unsafe tool that was interrupted mid-call returns an "interrupted" result and does not run again silently.
-  3. A pending approval survives a restart.
-  4. The UI reconnects and shows the current run state.
-  5. A `beforeTool` hook blocks a forbidden command.
-- Record facts, gaps, and risks in `docs/phase-0-findings.md`.
-- Record the integration decision in an ADR in `docs/adr/`.
-- Update this README.
+- A manual run survives `SIGKILL` during a model request and finishes after SQLite is reopened.
+- An unsafe mid-call tool returns `interrupted` without repeating its local effect. A replay-safe tool reruns as declared.
+- A pending proposal and its approval task survive one restart. This fixture survives four consecutive tool interruptions with the default restart limit, not five. On the fifth, the wrapper fails while the proposal still says pending. Decisions for dead tasks are rejected.
+- A live read-only Chromium page recovers the same pending task across a worker outage. A new tab shows completion after all tabs were closed. The test's HTTP adapter remains running.
+- A committed approval survives a crash before its fake local effect. Exhausted model retries become visible failures, not silent new attempts.
+- A `beforeTool` hook blocks a forbidden bash call before execution.
+- `ModelRuntime` resolves a `local-ai` provider against a mock API, with separate bearer-key cases for `auth.json` and a literal key in `models.json`. Real configuration discovery reports `local-ai/local-ai-auto` and the `models_json_key` source. Live inference and credential validity remain unverified.
 
-**Time limit:** two working sessions. If a recorded manual run cannot survive a restart, use a plain Node.js and SQLite runner instead, and do not patch `pi-durable`.
+The upstream demo installed, reset and built in an isolated git worktree. Startup stopped at its Jev credential check, so its UI remains unverified. It pins 1.0.3 and requires different provider wiring. No upstream code or library was patched.
 
-**Done when:** We can explain how the first factory will use `pi-durable` and identify any gaps or risks.
+Run the probes:
+
+```bash
+npm ci --ignore-scripts
+npm test
+npx playwright install chromium
+npm run test:ui
+npm run phase0:credentials  # Optional read-only local discovery. No inference.
+```
+
+For an existing browser, use `CHROMIUM_PATH=/usr/bin/chromium npm run test:ui` instead of installing Chromium.
+See [Phase 0 findings](docs/phase-0-findings.md) for the commands, evidence, gaps, safety limits, and consensus ledger.
+The owner accepted direct integration in [ADR 0001](docs/adr/0001-embed-pi-durable.md) on 2026-11-02. Backend implementation remains Phase 1 work.
+
+**Time limit:** two working sessions. The manual-run restart gate passes, so the plain Node.js/SQLite fallback is not triggered.
+
+**Exit assessment:** Complete as an evaluation and integration decision, with the documented limits accepted. The upstream UI and live local-model inference remain explicit gaps. Before enabling repository tools in Phase 1, perform a bounded, no-tool live model smoke check. The approval workflow must address the restart-limit finding before consequential actions.
 
 ### 1. Complete one manual run
 
-- Configure the factory for one task and a minimal set of tools.
-- Start a run manually using the simplest practical interface.
-- Save its status, transcript, findings, and outcome.
-- Make failures visible and provide a way to inspect the result.
+The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including the minimal outcome-first baseline. Implementation requires a separate go-ahead.
 
-**Done when:** A person can close and reopen the interface and still inspect the recorded run.
+- Configure Vanguard for one human-selected offline logic/test change and a minimal set of tools. Use one-shot Vitest and lint as candidate checks, not the Sentry-enabled build or live-account integrations.
+- Record a local `main` commit and create a factory-owned worktree and branch from it using plain Git. Leave the existing checkout untouched; do not automatically fetch, pull, or create `dev`.
+- Use Bun and `bun.lock` for Vanguard while preserving both tracked lockfiles. Require a matching operator-prepared private dependency bundle; mount it read-only. Missing or stale dependencies block agent work. Only an explicit trusted preparation step may fetch locked packages, with scrubbed environment and lifecycle scripts disabled.
+- Verify the real repository/toolchain execution boundary before enabling agent tools; block rather than weaken containment.
+- Start a run through a CLI connected to a manually started foreground backend.
+- Allow one active run total; reject a second start rather than queue it.
+- Require a healthy baseline, a regression that fails against the recorded base and passes with the draft, and passing final Vitest/lint checks. Do not repair unrelated baseline failures silently.
+- Save the task, evidence, plan, complete local patch including new files, runner receipts bound to the tested source, transcript, and outcome. Do not infer readiness from the model's claim alone.
+- Enforce the [accepted limit profile](docs/phase-1-plan.md#accepted-limit-profile) without resetting it on resume or retry. Verify actual request caps, deadlines, resource controls, and cleanup before use.
+- Make failures and interruptions visible. Keep crash inspection passive and require explicit operator recovery.
+
+**Done when:** A person can close and reopen the CLI and inspect a real draft with regression evidence, passing final checks, and its outcome. Lifecycle tests must also demonstrate safe crash recovery, stopping, second-start rejection, and failed-preflight blocking. Ready for review does not authorize publishing.
 
 ### 2. Add the workspace and review loop
 
+- Add the web UI; it is required in this phase, not replaced by the Phase 1 CLI.
 - Show work items and previous runs.
 - Let the person inspect evidence and ask follow-up questions.
 - Record approval or rejection of proposed actions.
@@ -164,34 +193,36 @@ The job is chosen (see [First factory](#first-factory-repository-maintenance-for
 
 **Done when:** The factory produces useful work while the person is away and makes its status and failures visible.
 
-### 4. Extract reusable factory features
+### 4. Manage multiple projects in the same factory
 
-- Separate the first factory's domain-specific behavior from shared capabilities.
-- Reuse configuration, run history, scheduling, workspace features, and tools where appropriate.
-- Test the design by creating a second factory for a different job.
+- Register a second repository as another project of the same repository-maintenance factory, not as a separate factory.
+- Reuse the factory's management, workspace, run-history, and scheduling capabilities across its projects.
+- Keep runs and work items project-scoped. Define concurrency and resource policies before allowing overlapping project work.
+- Support simultaneous work across multiple projects with correct attribution of work and results.
 
-**Done when:** A second factory can use shared capabilities without copying the first factory's domain logic.
+**Done when:** The same factory can maintain two projects concurrently while keeping their work and results correctly attributed.
 
 ## Candidate technology
 
-- **Agent foundation:** `@earendil-works/pi-durable` 1.5.0, matching the local `pi` 1.5.0 installation, subject to Phase 0.
-- **Models:** The existing local `pi` model configuration and credentials. Not OpenRouter.
-- **Application:** TypeScript and Node.js, as required by `pi-durable`.
-- **Storage:** SQLite is a candidate for local state and history.
-- **Interface:** A small web application.
+- **Agent foundation:** `@earendil-works/pi-durable` 1.5.0, matching the local `pi` 1.5.0 installation, accepted in ADR 0001.
+- **Models:** `openai/gpt-6.1-sol` initially, until the web UI, using Pi's existing model and credential integration. Do not substitute Codex, OpenRouter, or `local-ai-auto`. Authentication and live availability remain unverified; preflight failure blocks execution rather than triggering a fallback.
+- **Application:** TypeScript and Node.js, as required by `pi-durable`. The owner selected Node 24.21.0 as this repository's runtime for Phase 1 after the existing unit/integration probes passed. Applying the local pin remains implementation work; do not change global runtime settings.
+- **Storage:** SQLite, with a factory-level record store and per-run durable execution stores as selected in ADR 0005. The logical application schema remains implementation work.
+- **Interface:** Phase 1 CLI with a foreground backend; a web workspace in Phase 2.
 - **Scheduling:** A scheduler built into the backend. `pi-durable` has none.
-- **Execution:** Git worktrees and tool hooks first. Process isolation before unattended runs.
+- **Execution:** Plain-Git worktrees, limited read/edit tools, and a fixed-command sandboxed check runner. Verified containment is mandatory before Phase 1 repository tools; its actual Vanguard profile remains unvalidated.
 
-## Open questions
+## Questions for later phases
 
-1. Should it run only on this machine or on an always-on host?
-2. Which budget limits apply to model spend, run duration, and concurrency?
-3. Which `pi-durable` features can we reuse as-is, and what must we build? Phase 0 answers this.
-4. How should the factory notify a person when work is ready or a run fails?
+1. Should later unattended deployments run on this machine or an always-on host?
+2. How should future concurrency and resource policies extend the selected project-scoped work model and Phase 1 limits?
+3. How should the factory notify a person when work is ready or a run fails?
+
+The [Phase 1 design tree](docs/phase-1-plan.md#design-tree-and-current-frontier) records the accepted decisions and remaining implementation verification gates.
 
 ## References
 
 - [Project repository](https://github.com/the-data-sherpa/my-first-software-factory): this plan and the factory code. The repository is public. Do not commit credentials or `pi` authentication files.
 - [Tiny Software Factories video](https://www.youtube.com/watch?v=1v7ldJiyH-Y): inspiration and description of the factory concept.
-- [Durable Pi](https://github.com/disler/durable-pi): proposed agent foundation and documented local setup.
+- [Durable Pi](https://github.com/disler/durable-pi): reference applications and documented local setup. ADR 0001 selects direct library embedding, not these applications.
 - [Super Simple Software Factory](https://github.com/disler/super-simple-software-factory): a related public project with a different workflow design.
