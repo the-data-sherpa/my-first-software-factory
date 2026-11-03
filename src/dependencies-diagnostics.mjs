@@ -29,7 +29,7 @@ function tarball(files) {
   }
   blocks.push(Buffer.alloc(1024)); return gzipSync(Buffer.concat(blocks));
 }
-export async function dependencyFixture(root, { copyToolchain = false, frozenMismatch = false } = {}) {
+export async function dependencyFixture(root, { copyToolchain = false, frozenMismatch = false, checkSuffix = '' } = {}) {
   if (!/^\/tmp\/factory-dependencies-[A-Za-z0-9]+$/.test(root)) throw new Error('Disposable fixture required');
   const repositoryPath = `${root}/owner`; const stateDir = `${root}/private`; const logs = `${root}/fixture-log`;
   for (const path of [repositoryPath, stateDir, logs, `${repositoryPath}/vendor`]) await mkdir(path, { mode: 0o700 });
@@ -44,6 +44,7 @@ for (const path of ['/work/no-write', '/work/node_modules/vitest/no-write', '/wo
 const network = await new Promise((resolve) => { const socket = createConnection({host:'127.0.0.1',port:9}); socket.on('error', e => resolve(e.code)); socket.on('connect', () => { socket.destroy(); resolve('connected'); }); });
 console.log(JSON.stringify({ fixture: true, writes, network, argv: process.argv.slice(2), installed: JSON.parse(await readFile('/work/node_modules/vitest/package.json','utf8')).version }));
 if (Object.values(writes).some(code => code !== 'EROFS') || network !== 'EPERM') process.exitCode = 1;
+${checkSuffix}
 `;
   await writeFile(`${repositoryPath}/package.json`, JSON.stringify(manifest), { mode: 0o600 });
   await writeFile(`${repositoryPath}/package-lock.json`, '{"fixture":"preserve npm bytes"}\n', { mode: 0o600 });
@@ -214,6 +215,9 @@ export async function runDependencyDiagnostic(scenario, root) {
     const forged = await code(() => createContainedExecution({ ...options, dependencyBundle: { prepared: true, intentId: f.intent.id } }));
     const tools = await createContainedExecution({ ...options, dependencyBundle: await verifyDependencyBundle(f.intent) });
     try {
+      for (const path of ['package.json', 'bun.lock', 'package-lock.json', 'vendor/vitest.tgz']) {
+        await assert.rejects(tools.write(path, 'dependency changes are not admitted'), { code: 'UNSAFE_PATH' });
+      }
       const check = await tools.check('vitest');
       return { check, lint: await tools.check('lint'), boundary: tools.verification, forged,
         extraArgs: await code(() => tools.check('vitest', { argv: ['install'] })), noInstall: await code(() => tools.check('install')) };

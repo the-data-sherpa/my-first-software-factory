@@ -297,7 +297,8 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
     },
     async write(path, text) {
       if (typeof text !== 'string' || Buffer.byteLength(text) > CONTAINMENT_LIMITS.writeBytes) fail('WRITE_LIMIT', 'Text writes are limited to 65536 UTF-8 bytes.');
-      return fileOperation(() => withFile(root, path, protectedPaths, true, async (file) => {
+      return fileOperation(() => withFile(root, path, [...protectedPaths,
+        ...(dependencyBundle ? ['package.json', 'bun.lock', 'package-lock.json', 'vendor'] : [])], true, async (file) => {
         await file.truncate(0); await file.writeFile(text); await file.sync();
         return { path, bytesWritten: Buffer.byteLength(text) };
       }));

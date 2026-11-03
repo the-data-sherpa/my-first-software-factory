@@ -47,8 +47,22 @@ export async function withFile(root, path, protectedPaths, write, callback) {
     throw error;
   } finally { for (const directory of directories.reverse()) await directory.close(); }
 }
-export async function snapshot(root, destination, protectedPaths) {
-  await mkdir(destination, { mode: 0o700 });
+export async function sourceFingerprint(worktree, manifest) {
+  const root = await privateRoot(worktree);
+  try { return await snapshot(root, undefined, [], manifest); }
+  finally { await root.close(); }
+}
+export async function snapshot(root, destination, protectedPaths, manifest) {
+  if (destination) await mkdir(destination, { mode: 0o700 });
+  const expected = manifest && new Map(manifest.entries.filter(e => !e.path.split('/').some(denied)).map(e => [e.path, e]));
+  const expectedDirectories = manifest && new Set();
+  for (const entry of manifest?.entries ?? []) {
+    const names = entry.path.split('/');
+    for (let i = 0; i < names.length - 1; i++) {
+      if (denied(names[i])) break;
+      expectedDirectories.add(names.slice(0, i + 1).join('/'));
+    }
+  }
   const hash = createHash('sha256');
   let bytes = 0; let entries = 0;
   async function copy(directory, relative = '') {
@@ -61,7 +75,9 @@ export async function snapshot(root, destination, protectedPaths) {
       try {
         const info = await file.stat();
         if (info.isDirectory()) {
-          owned(info, true); await mkdir(join(destination, path), { mode: 0o700 });
+          owned(info, true);
+          if (expectedDirectories && !expectedDirectories.delete(path)) reject();
+          if (destination) await mkdir(join(destination, path), { mode: 0o700 });
           hash.update(`directory:${JSON.stringify(path)}\n`); await copy(file, path);
         } else {
           owned(info); bytes += info.size;
@@ -77,11 +93,18 @@ export async function snapshot(root, destination, protectedPaths) {
           if (length !== info.size) reject();
           const data = buffer.subarray(0, length);
           hash.update(`file:${JSON.stringify(path)}:${info.mode & 0o111}:${length}\n`); hash.update(data);
-          await writeFile(join(destination, path), data, { flag: 'wx', mode: (info.mode & 0o111) ? 0o500 : 0o400 });
+          if (expected) {
+            const entry = expected.get(path);
+            if (!entry || entry.bytes !== length || entry.sha256 !== createHash('sha256').update(data).digest('hex')
+              || Boolean(info.mode & 0o111) !== (entry.mode === '100755')) reject();
+            expected.delete(path);
+          }
+          if (destination) await writeFile(join(destination, path), data, { flag: 'wx', mode: (info.mode & 0o111) ? 0o500 : 0o400 });
         }
       } finally { await file.close(); }
     }
   }
   await copy(root);
+  if (expected?.size || expectedDirectories?.size) reject();
   return hash.digest('hex');
 }

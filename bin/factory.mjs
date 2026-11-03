@@ -1,7 +1,6 @@
 #!/usr/bin/env node
-import { createServer, request as httpRequest } from 'node:http';
-import { once } from 'node:events';
-import { lstat, open, unlink, chmod } from 'node:fs/promises';
+import { request as httpRequest } from 'node:http';
+import { open } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { openFactory, inspectHistory, backupFactory, restoreFactory, DEFAULT_STATE_DIR, FactoryError } from '../src/factory.mjs';
@@ -9,94 +8,39 @@ import { createFixtureExecution, createOwnerModelPreflight } from '../src/execut
 import { admitWorkspace, prepareWorkspace, inspectWorkspace } from '../src/workspace.mjs';
 
 const print = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
-const safeError = (error) => error instanceof FactoryError
-  ? { code: error.code, message: error.message, ...error.details }
-  : { code: 'OPERATION_FAILED', message: 'The operation failed. Private state was retained. No fallback was attempted.' };
+import { serveFactory, safeError } from '../src/control-server.mjs';
+import { createAdmissionExecution } from '../src/admission.mjs';
 const options = {
   'state-dir': { type: 'string', default: DEFAULT_STATE_DIR },
   fixture: { type: 'boolean' }, 'fixture-delay-ms': { type: 'string' }, 'prepare-workspace': { type: 'boolean' },
   'model-preflight': { type: 'boolean' }, 'fetch-locked-packages': { type: 'boolean' },
+  'admit-agent': { type: 'boolean' }, 'dependency-run': { type: 'string' },
   'project-path': { type: 'string' }, 'request-id': { type: 'string' }, 'bun-path': { type: 'string' },
   brief: { type: 'string' }, 'brief-text': { type: 'string' },
   to: { type: 'string' }, from: { type: 'string' }, review: { type: 'string' },
 };
 
 async function serve(values) {
-  if (values['model-preflight'] && (values.fixture || values['prepare-workspace'])) {
+  if ((values['model-preflight'] && (values.fixture || values['prepare-workspace'] || values['admit-agent']))
+    || (values['admit-agent'] && (values.fixture || values['prepare-workspace']))) {
     throw new FactoryError('INVALID_ARGUMENTS', 'Model preflight cannot enable fixtures or repository preparation.');
   }
   const fixture = values.fixture ? createFixtureExecution({ delayMs: Number(values['fixture-delay-ms'] ?? 0) }) : undefined;
   if (!values.fixture && values['fixture-delay-ms'] !== undefined) throw new FactoryError('INVALID_ARGUMENTS', 'Fixture options require --fixture.');
-  const execution = fixture ?? (values['model-preflight'] ? createOwnerModelPreflight() : undefined);
+  const execution = fixture ?? (values['model-preflight'] ? createOwnerModelPreflight()
+    : values['admit-agent'] ? createAdmissionExecution() : undefined);
   const mode = execution?.mode ?? 'production-blocked';
   const factory = await openFactory({ stateDir: values['state-dir'], execution,
-    ...(values['prepare-workspace'] ? { workspace: { admit: admitWorkspace, prepare: prepareWorkspace, inspect: inspectWorkspace } } : {}),
+    ...(values['prepare-workspace'] || values['admit-agent'] ? { workspace: { admit: admitWorkspace, prepare: prepareWorkspace, inspect: inspectWorkspace } } : {}),
     ...(values['project-path'] ? { project: { id: 'vanguard', repositoryPath: values['project-path'] } } : {}),
   });
-  const socketPath = join(factory.stateDir, 'backend.sock');
-  let server;
-  try {
-    if (Buffer.byteLength(socketPath) > 103) throw new FactoryError('SOCKET_PATH_TOO_LONG', 'Use a shorter private state directory for the Unix socket.');
-    const previous = await lstat(socketPath).catch((error) => { if (error.code !== 'ENOENT') throw error; });
-    if (previous) {
-      if (!previous.isSocket() || (process.getuid && previous.uid !== process.getuid())) {
-        throw new FactoryError('SOCKET_PATH_OCCUPIED', 'The backend socket path is occupied by a non-owned socket or another file.');
-      }
-      await unlink(socketPath); // The lifetime owner lock fences stale-socket removal.
-    }
-    const send = (response, status, body) => {
-      response.writeHead(status, { 'content-type': 'application/json', connection: 'close' });
-      response.end(JSON.stringify(body));
-    };
-    server = createServer(async (request, response) => {
-      try {
-        if (request.method === 'GET' && request.url === '/health') return send(response, 200, { storageVersions: factory.storageInfo(), fixture: Boolean(fixture), mode });
-        if (request.method === 'GET' && request.url === '/runs') return send(response, 200, await factory.listRuns());
-        if (request.method === 'GET' && /^\/runs\/run_[a-f0-9-]+$/.test(request.url)) {
-          return send(response, 200, await factory.inspectRun(request.url.slice('/runs/'.length)));
-        }
-        const control = request.url.match(/^\/runs\/(run_[a-f0-9-]+)\/(stop|resume|replace|prepare-dependencies)$/);
-        if (request.method === 'POST' && (request.url === '/runs' || control)) {
-          const chunks = [];
-          let size = 0;
-          for await (const chunk of request) {
-            size += chunk.length;
-            if (size > 512 * 1024) throw new FactoryError('INVALID_BRIEF', 'The admission request is too large.');
-            chunks.push(chunk);
-          }
-          let input;
-          try { input = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
-          catch { throw new FactoryError('INVALID_ARGUMENTS', 'Supply a JSON admission request.'); }
-          if (!input || typeof input !== 'object' || Array.isArray(input)) throw new FactoryError('INVALID_ARGUMENTS', 'Supply a JSON admission object.');
-          const result = control ? await factory[control[2] === 'prepare-dependencies' ? 'prepareDependencies' : `${control[2]}Run`](control[1], input)
-            : await factory.startRun(input);
-          return send(response, 200, result);
-        }
-        throw new FactoryError('INVALID_COMMAND', 'Unknown factory operation.');
-      } catch (error) { send(response, 400, { error: safeError(error) }); }
-    });
-    server.requestTimeout = 5000;
-    server.headersTimeout = 5000;
-    server.listen(socketPath);
-    await once(server, 'listening');
-    await chmod(socketPath, 0o600);
-    let shutdown;
-    const stop = () => shutdown ??= (async () => {
-      const closed = new Promise((resolve) => server.close(resolve));
-      server.closeAllConnections();
-      await factory.close();
-      await closed;
-      process.off('SIGTERM', stop);
-      process.off('SIGINT', stop);
-    })().catch(() => { process.stderr.write(`${JSON.stringify({ error: safeError() })}\n`); process.exitCode = 1; });
-    process.on('SIGTERM', stop);
-    process.on('SIGINT', stop);
-    print({ event: 'backend-ready', mode, storageVersions: factory.storageInfo() });
-  } catch (error) {
-    server?.close();
-    await factory.close();
-    throw error;
-  }
+  const server = await serveFactory({ factory, mode, fixture: Boolean(fixture) });
+  let shutdown;
+  const stop = () => shutdown ??= server.close().then(() => {
+    process.off('SIGTERM', stop); process.off('SIGINT', stop);
+  }).catch(() => { process.stderr.write(`${JSON.stringify({ error: safeError() })}\n`); process.exitCode = 1; });
+  process.on('SIGTERM', stop); process.on('SIGINT', stop);
+  print({ event: 'backend-ready', mode, storageVersions: factory.storageInfo() });
 }
 
 async function request(stateDir, method, path, data) {
@@ -149,8 +93,8 @@ try {
   const { values, positionals } = parsed;
   const [command, runId] = positionals;
   const allowed = {
-    serve: ['fixture', 'fixture-delay-ms', 'project-path', 'prepare-workspace', 'model-preflight'],
-    start: ['request-id', 'brief', 'brief-text'], inspect: [], list: [], info: [],
+    serve: ['fixture', 'fixture-delay-ms', 'project-path', 'prepare-workspace', 'model-preflight', 'admit-agent'],
+    start: ['request-id', 'brief', 'brief-text', 'dependency-run'], inspect: [], list: [], info: [],
     stop: [], resume: ['review'], replace: ['request-id', 'review'], 'prepare-dependencies': ['bun-path', 'fetch-locked-packages'],
     backup: ['to'], restore: ['from'],
   };
@@ -166,7 +110,7 @@ try {
   else {
     const stateDir = values['state-dir'];
     try {
-      if (command === 'start') print(await request(stateDir, 'POST', '/runs', { requestId: values['request-id'], brief: await readBrief(values) }));
+      if (command === 'start') print(await request(stateDir, 'POST', '/runs', { requestId: values['request-id'], brief: await readBrief(values), dependencyRunId: values['dependency-run'] }));
       else if (['stop', 'resume', 'replace', 'prepare-dependencies'].includes(command)) print(await request(stateDir, 'POST', `/runs/${encodeURIComponent(runId)}/${command}`,
         { review: values.review, requestId: values['request-id'], bunPath: values['bun-path'], registry: values['fetch-locked-packages'] ?? false }));
       else print(await request(stateDir, 'GET', command === 'info' ? '/health' : command === 'list' ? '/runs' : `/runs/${encodeURIComponent(runId)}`));
