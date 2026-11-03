@@ -12,6 +12,7 @@ import { acquireRegistry, verifyAcquisition, REGISTRY } from './dependencies-reg
 
 const INSTRUCTION = 'Ask the owner to admit and explicitly prepare a matching private dependency bundle through the foreground preparation operation. Agent tools cannot install packages.';
 const explanations = {
+  DRAIN_FAILED: 'Preparation cleanup was not confirmed. Ownership remains fenced; require trusted quiescence review.',
   DEPENDENCIES_UNSUPPORTED: 'Unsupported dependency input.',
   DEPENDENCIES_STALE: 'The source or toolchain fingerprint changed.',
   DEPENDENCIES_UNSAFE: 'The private dependency inputs or bundle failed integrity checks.',
@@ -26,7 +27,7 @@ export class DependencyError extends Error {
   constructor(code) { super(`${explanations[code] ?? 'Private dependencies are unavailable.'} ${INSTRUCTION}`); this.name = 'DependencyError'; this.code = code; }
   toJSON() { return { code: this.code, message: this.message }; }
 }
-const failureCodes = new Set(['DEPENDENCIES_ABORTED', 'DEPENDENCIES_LAUNCH_FAILED', 'DEPENDENCIES_OUTPUT_LIMIT', 'DEPENDENCIES_BUNDLE_LIMIT',
+const failureCodes = new Set(['DRAIN_FAILED', 'DEPENDENCIES_ABORTED', 'DEPENDENCIES_LAUNCH_FAILED', 'DEPENDENCIES_OUTPUT_LIMIT', 'DEPENDENCIES_BUNDLE_LIMIT',
   'DEPENDENCIES_TIMEOUT', 'DEPENDENCIES_RESOURCE_LIMIT', 'DEPENDENCIES_INSTALL_FAILED', 'DEPENDENCIES_EXPORT_FAILED', 'DEPENDENCIES_SCRIPT_SUPPRESSION',
   'DEPENDENCIES_FETCH_FAILED', 'DEPENDENCIES_FETCH_LIMIT', 'DEPENDENCIES_INTEGRITY', 'DEPENDENCIES_FETCH_AUTHORIZATION']);
 export const serializeDependencyError = (error) => (error instanceof DependencyError ? error : new DependencyError(failureCodes.has(error?.code) ? error.code : 'DEPENDENCIES_FAILED')).toJSON();
@@ -35,12 +36,15 @@ const cancelled = (signal) => { if (signal?.aborted) fail('DEPENDENCIES_ABORTED'
 async function safe(operation) {
   try { return await operation(); }
   catch (error) {
-    if (error instanceof DependencyError || error.code === 'CONTAINMENT_REQUIRED') throw error;
+    if (error instanceof DependencyError || ['CONTAINMENT_REQUIRED', 'DRAIN_FAILED'].includes(error.code)) throw error;
     throw new DependencyError(/^DEPENDENCIES_[A-Z_]+$/.test(error.code ?? '') ? error.code : 'DEPENDENCIES_UNSAFE');
   }
 }
 const identity = ({ id, ...body }) => hash(JSON.stringify(body));
 const capabilities = new WeakMap();
+// Keep the SQLite owner handle reachable when drainage fails. Releasing it (even
+// through garbage collection) would admit another live owner over uncertain work.
+const undrainedOwners = new Set();
 
 async function toolchain(bunPath, registry = false) {
   // Toolchain paths are trusted owner inputs, not repository fields. Never read user Bun config.
@@ -149,7 +153,10 @@ export async function prepareOwnerDependencies(intent, options = {}) {
       try { if (records.active()) fail('DEPENDENCIES_ACTIVE_RUN'); } finally { records.close(); }
     }
     return await prepareDependencies(intent, options);
-  } finally { release(); }
+  } catch (error) {
+    if (error?.code === 'DRAIN_FAILED') undrainedOwners.add(release);
+    throw error;
+  } finally { if (!undrainedOwners.has(release)) release(); }
 }
 
 /** Explicit owner operation only. Caller holds lifetime ownership and excludes every agent/tool while preparing. */
@@ -197,7 +204,9 @@ export async function prepareDependencies(intent, { signal, authorizeRegistryFet
         scripts: 'disabled', suppression, acquisition, frozenLockfile: true, reviewReady: false };
       await save(`${destination}/result.json`, receipt); return receipt;
     } catch (error) {
-      await save(`${destination}/failure.json`, serializeDependencyError(error)); throw error;
+      try { await save(`${destination}/failure.json`, serializeDependencyError(error)); }
+      catch (receiptError) { if (error?.code !== 'DRAIN_FAILED') throw receiptError; }
+      throw error;
     }
   });
 }

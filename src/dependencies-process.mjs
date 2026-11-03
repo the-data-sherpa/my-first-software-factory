@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { readFile, realpath, open, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { containmentFilter } from './containment-filter.mjs';
+import { namespaceLifetime } from './containment-namespace.mjs';
 import { verifyContainmentEnvelope, CONTAINMENT_LIMITS } from './containment.mjs';
 
 export const libraries = ['libdl.so.2', 'libstdc++.so.6', 'libm.so.6', 'libgcc_s.so.1', 'libpthread.so.0', 'libc.so.6', 'ld-linux-x86-64.so.2'];
@@ -16,8 +17,8 @@ export async function runPreparationSandbox({ inputDirectory, cacheDirectory, bu
   const filterPath = `${receiptDirectory}/filter.bpf`;
   await writeFile(filterPath, containmentFilter(), { flag: 'wx', mode: 0o600 });
   const filter = await open(filterPath, 'r');
-  let child; let terminal; let timer; let reason;
-  const stop = (why) => { reason ??= why; child?.kill('SIGKILL'); };
+  let child; let lifetime; let timer; let reason;
+  const stop = (why) => { reason ??= why; lifetime?.stop(); };
   const abort = () => stop('DEPENDENCIES_ABORTED');
   try {
     const args = ['--unshare-user', '--unshare-pid', '--unshare-net', '--unshare-ipc', '--unshare-uts', '--unshare-cgroup',
@@ -35,18 +36,17 @@ export async function runPreparationSandbox({ inputDirectory, cacheDirectory, bu
     args.push('--symlink', 'usr/lib', '/lib64', '--symlink', 'usr/lib', '/lib',
       '--ro-bind', inputDirectory, '/input', '--ro-bind', worker, '/prepare.mjs', '--proc', '/proc', '--remount-ro', '/proc',
       '--dev', '/dev', '--remount-ro', '/dev', '--size', String(CONTAINMENT_LIMITS.scratchBytes), '--tmpfs', '/tmp',
-      '--remount-ro', '/', '--chdir', '/tmp', '--seccomp', '3', '--block-fd', '4', '--',
+      '--remount-ro', '/', '--chdir', '/tmp', '--seccomp', '3', '--block-fd', '4', '--info-fd', '6', '--',
       '/runtime/node', '/prepare.mjs', ...(fixture ? ['fixture'] : cacheDirectory ? ['registry'] : []));
     const events = async () => {
       const values = await Promise.all(['memory.events', 'pids.events'].map((name) => readFile(`/sys/fs/cgroup${envelope.cgroup}/${name}`, 'utf8')));
       return values.join('\n');
     };
     const before = await events();
-    child = spawn('/usr/bin/bwrap', args, { env: {}, stdio: ['ignore', 'pipe', 'pipe', filter.fd, 'pipe', 'pipe'] });
-    terminal = new Promise((resolve) => {
-      child.on('error', () => stop('DEPENDENCIES_LAUNCH_FAILED'));
-      child.on('close', (code, signal) => resolve({ code, signal }));
-    });
+    // fd5 is the bounded bundle export. Namespace information has its own fd6.
+    child = spawn('/usr/bin/bwrap', args, { env: {}, stdio: ['ignore', 'pipe', 'pipe', filter.fd, 'pipe', 'pipe', 'pipe'] });
+    lifetime = namespaceLifetime(child, envelope, 6);
+    child.on('error', () => stop('DEPENDENCIES_LAUNCH_FAILED'));
     // Raw Bun diagnostics are deliberately not retained: they can quote package-controlled text.
     let logBytes = 0; const chunks = []; let exportBytes = 0;
     for (const stream of [child.stdout, child.stderr]) stream.on('data', (data) => {
@@ -62,25 +62,22 @@ export async function runPreparationSandbox({ inputDirectory, cacheDirectory, bu
     if (signal?.aborted) abort();
     let launch;
     try {
-      const stat = await readFile(`/proc/${child.pid}/stat`, 'utf8');
-      const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
-      const cgroup = (await readFile(`/proc/${child.pid}/cgroup`, 'utf8')).trim().slice(3);
-      if (Number(fields[1]) !== process.pid || cgroup !== envelope.cgroup) throw error('DEPENDENCIES_LAUNCH_FAILED');
-      launch = { pid: child.pid, parentPid: Number(fields[1]), startTime: fields[19], cgroup };
+      launch = await lifetime.verified;
       await writeFile(`${receiptDirectory}/launch.json`, JSON.stringify(launch), { flag: 'wx', mode: 0o600 });
-      child.stdio[4].end();
-    } catch { stop('DEPENDENCIES_LAUNCH_FAILED'); }
-    const exit = await terminal;
+      if (reason) await lifetime.drain();
+      else child.stdio[4].end();
+    } catch { stop('DEPENDENCIES_LAUNCH_FAILED'); await lifetime.drain(); }
+    const { exitCode, exitSignal } = await lifetime.finished();
     const after = await events();
     const counters = (text) => text.match(/(?:oom_kill|max) \d+/g)?.join(',');
     if (counters(before) !== counters(after)) reason ??= 'DEPENDENCIES_RESOURCE_LIMIT';
-    if (reason || exit.code !== 0 || exit.signal) throw error(reason ?? 'DEPENDENCIES_INSTALL_FAILED');
+    if (reason || exitCode !== 0 || exitSignal) throw error(reason ?? 'DEPENDENCIES_INSTALL_FAILED');
     let output;
     try { output = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw error('DEPENDENCIES_EXPORT_FAILED'); }
     return { output, envelope, launch, logBytes, network: 'kernel-denied' };
   } finally {
     clearTimeout(timer); signal?.removeEventListener('abort', abort);
-    if (child && child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
-    await terminal; await filter.close();
+    const drainFailure = await lifetime?.drain().catch((error) => error);
+    try { await filter.close(); } finally { if (drainFailure) throw drainFailure; }
   }
 }

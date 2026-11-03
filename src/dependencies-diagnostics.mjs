@@ -7,9 +7,10 @@ import { admitWorkspace, prepareWorkspace } from './workspace.mjs';
 import { admitDependencies, prepareDependencies, dependencyDirectory, verifyDependencyBundle, inspectDependencies, serializeDependencyError, prepareOwnerDependencies } from './dependencies.mjs';
 import { createContainedExecution, verifyContainmentEnvelope } from './containment.mjs';
 import { acquireOwner } from './storage.mjs';
-import { scopeProcesses, waitForCleanup } from './containment-process-fixtures.mjs';
+import { scopeProcesses, waitForCleanup, livingProcesses } from './containment-process-fixtures.mjs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { runPreparationSandbox } from './dependencies-process.mjs';
+import { stopPreparationStartup } from './containment-startup-fixture.mjs';
 
 const bunPath = '/home/cowen/.bun/bin/bun';
 const scripts = (kind) => Object.fromEntries(['preinstall', 'install', 'postinstall'].map((phase) => [phase,
@@ -75,9 +76,34 @@ if (Object.values(writes).some(code => code !== 'EROFS') || network !== 'EPERM')
   return { generated, intent, workspaceIntent, repositoryPath, git };
 }
 export async function runDependencyDiagnostic(scenario, root) {
-  if (!['prepare', 'reuse', 'integrity', 'frozen', 'unsupported', 'cancel', 'admit'].includes(scenario)) throw new Error('Unknown dependency diagnostic');
+  if (!['prepare', 'reuse', 'integrity', 'frozen', 'unsupported', 'cancel', 'admit', 'startup-proof', 'startup-target'].includes(scenario)) throw new Error('Unknown dependency diagnostic');
   const f = await dependencyFixture(root, { copyToolchain: scenario === 'integrity', frozenMismatch: scenario === 'frozen' });
   const code = async (operation) => { try { await operation(); return 'unexpected-success'; } catch (error) { return error.code; } };
+  if (scenario.startsWith('startup-')) {
+    const envelope = await verifyContainmentEnvelope();
+    const fault = stopPreparationStartup(root, scenario.slice('startup-'.length), envelope);
+    const controller = new AbortController();
+    const abort = () => controller.abort(); process.on('SIGUSR1', abort);
+    try {
+      const operation = code(() => prepareOwnerDependencies(f.intent, { signal: controller.signal }));
+      const ready = await fault.ready;
+      process.stdout.write(`${JSON.stringify(ready)}\n`);
+      // Observe exit independently from close on a red watchdog, without changing drainage.
+      const observation = setInterval(() => {
+        if (controller.signal.aborted) void (async () => {
+          await writeFile(`${root}/startup-observation.json`, JSON.stringify({ ...ready.events(),
+            survivors: await scopeProcesses(envelope) }), { mode: 0o600 });
+        })().catch(() => {});
+      }, 50);
+      try {
+        const cancelled = await operation;
+        const survivors = await livingProcesses(ready.observed); // Must already be dead at return.
+        const release = await acquireOwner(f.workspaceIntent.stateDir); release();
+        return { cancelled, survivors, closed: ready.events().closed, ownerReleased: true,
+          failure: JSON.parse(await readFile(`${dependencyDirectory(f.intent)}/failure.json`, 'utf8')) };
+      } finally { clearInterval(observation); }
+    } finally { process.off('SIGUSR1', abort); fault.restore(); }
+  }
   if (scenario === 'admit') return { before: await inspectDependencies(f.intent), intentPath: `${root}/saved-intent.json` };
   if (scenario === 'cancel') {
     const release = await acquireOwner(f.workspaceIntent.stateDir);

@@ -9,8 +9,8 @@ import { containmentFilter } from './containment-filter.mjs';
 import { hostProbes } from './containment-host-probes.mjs';
 import { DIAGNOSTIC_LIMITS } from './containment-test-profile.mjs';
 import { promisify } from 'node:util';
-import { setTimeout as delay } from 'node:timers/promises';
 import { dependencyMount } from './dependencies.mjs';
+import { namespaceLifetime, namespaceFenced, processIdentity as identity } from './containment-namespace.mjs';
 
 const exec = promisify(execFile);
 export const CONTAINMENT_LIMITS = Object.freeze({
@@ -23,7 +23,6 @@ export class ContainmentError extends Error {
 }
 const fail = (code, message) => { throw new ContainmentError(code, message); };
 let activeCheck = false; // One backend owns execution; the factory lifetime lock fences other processes.
-let fenced = false; // Failed cleanup must also fence newly created execution handles.
 const managerEnv = () => ({ PATH: '/usr/bin', XDG_RUNTIME_DIR: `/run/user/${process.getuid()}`,
   DBUS_SESSION_BUS_ADDRESS: `unix:path=/run/user/${process.getuid()}/bus` });
 
@@ -37,7 +36,7 @@ async function fixtureEnvelope() {
 }
 async function inspectEnvelope(limits, diagnostic) {
   try {
-    if (fenced || process.platform !== 'linux' || process.arch !== 'x64' || process.versions.node !== '24.21.0') throw new Error();
+    if (namespaceFenced() || process.platform !== 'linux' || process.arch !== 'x64' || process.versions.node !== '24.21.0') throw new Error();
     const path = (await readFile('/proc/self/cgroup', 'utf8')).trim().match(/^0::(\/[^\n]+)$/)?.[1];
     const unit = path && basename(path);
     if (!(diagnostic ? /^factory-contained-test-[a-f0-9-]+\.scope$/ : /^factory-contained-[a-f0-9-]+\.scope$/).test(unit ?? '')) throw new Error();
@@ -67,45 +66,6 @@ async function resourceEvents(envelope) {
   return { pidsMax: pids.max, oomKill: memory.oom_kill, memoryMax: memory.max };
 }
 const inside = (parent, child) => { const path = relative(parent, child); return !path || (!path.startsWith('../') && path !== '..' && !path.startsWith('/')); };
-async function identity(pid) {
-  try {
-    const stat = await readFile(`/proc/${pid}/stat`, 'utf8');
-    const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
-    return { pid, parentPid: Number(fields[1]), startTime: fields[19], state: fields[0] };
-  } catch (error) { if (['ENOENT', 'ESRCH'].includes(error.code)) return; throw error; }
-}
-async function sandboxIdentity(pid, parentPid, envelope) {
-  if (!Number.isSafeInteger(pid) || pid <= 1) throw new Error('Missing sandbox PID.');
-  const observed = await identity(pid);
-  const cgroup = (await readFile(`/proc/${pid}/cgroup`, 'utf8')).trim();
-  const status = await readFile(`/proc/${pid}/status`, 'utf8');
-  if (observed?.parentPid !== parentPid || cgroup !== `0::${envelope.cgroup}` || !/^NSpid:\s+\d+\s+1$/m.test(status)) {
-    throw new Error('Unverified sandbox PID 1.');
-  }
-  return observed;
-}
-async function killSandbox(sandbox, envelope) {
-  const current = await identity(sandbox.pid);
-  if (!current || current.startTime !== sandbox.startTime || ['Z', 'X'].includes(current.state)) return;
-  // An exact PID/start-time and scope check, never a process-group or name-based kill.
-  try {
-    if ((await readFile(`/proc/${sandbox.pid}/cgroup`, 'utf8')).trim() !== `0::${envelope.cgroup}`) throw new Error('Sandbox moved.');
-  } catch (error) { if (['ENOENT', 'ESRCH'].includes(error.code)) return; throw error; }
-  try { process.kill(sandbox.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
-  for (let attempt = 0; attempt < 200; attempt++) {
-    const now = await identity(sandbox.pid);
-    if (!now || now.startTime !== sandbox.startTime || ['Z', 'X'].includes(now.state)) return;
-    await delay(5);
-  }
-  throw new Error('Sandbox did not drain.');
-}
-async function fenceScope(envelope) {
-  // Uncertain startup/cleanup cannot grant further execution. Kill only this
-  // verified foreground scope (including this backend), retaining start receipts.
-  fenced = true;
-  await exec('/usr/bin/systemctl', ['--user', 'kill', '--kill-whom=all', '--signal=KILL', envelope.unit], { env: managerEnv(), timeout: 5000 });
-  fail('CONTAINMENT_REQUIRED', 'Sandbox cleanup was not confirmed; execution is fenced.');
-}
 const helperPath = fileURLToPath(new URL('./containment-probe.mjs', import.meta.url));
 const libraries = ['libdl.so.2', 'libstdc++.so.6', 'libm.so.6', 'libgcc_s.so.1', 'libpthread.so.0', 'libc.so.6', 'ld-linux-x86-64.so.2'];
 async function durableFile(path, data) {
@@ -202,18 +162,9 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
     busy = true; activeCheck = true;
     const operation = (async () => {
       await unchangedRoots();
-      let probes; let filter; let log; let child; let terminal; let timer; let reason; let sandbox; let stopping;
+      let probes; let filter; let log; let child; let lifetime; let timer; let reason;
       const abortSignal = combined(checkSignal);
-      // Do not kill the outer bwrap during its startup handoff. Its namespace child
-      // can otherwise adopt a new parent before --die-with-parent is armed.
-      const drain = () => stopping ??= (async () => {
-        try {
-          if (sandbox) await killSandbox(sandbox, envelope);
-          else if (child?.pid) throw new Error('Namespace identity was not verified.');
-          if (child?.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
-        } catch { closed = true; await fenceScope(envelope); }
-      })();
-      const stop = (why) => { reason ??= why; if (sandbox) drain().catch(() => {}); };
+      const stop = (why) => { reason ??= why; lifetime?.stop(); };
       const abort = () => stop('aborted');
       try {
         const id = `check-${randomUUID()}`;
@@ -250,22 +201,8 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
         const eventsBefore = await resourceEvents(envelope);
         let launch; let length = 0; const output = [];
         child = spawn('/usr/bin/bwrap', args, { env: {}, stdio: ['ignore', 'pipe', 'pipe', filter.fd, 'pipe', 'pipe'] });
-        let startupTimer;
-        const information = new Promise((resolve, reject) => {
-          startupTimer = setTimeout(() => reject(new Error('Sandbox startup did not finish.')), Math.min(5000, limits.checkMs));
-          let text = '';
-          child.stdio[5].on('data', (data) => { text += data; if (text.length > 8192) reject(new Error('Invalid sandbox information.')); });
-          child.stdio[5].on('error', reject);
-          child.stdio[5].on('end', () => {
-            try { resolve(JSON.parse(text)); } catch (error) { reject(error); }
-          });
-        }).finally(() => clearTimeout(startupTimer));
-        // Attach immediately: startup can fail before the launch receipt is saved.
-        information.catch(() => {});
-        terminal = new Promise((resolve) => {
-          child.on('error', () => { reason ??= 'launcher-error'; });
-          child.on('close', (exitCode, exitSignal) => resolve({ exitCode, exitSignal }));
-        });
+        lifetime = namespaceLifetime(child, envelope, 5, limits.checkMs);
+        child.on('error', () => stop('launcher-error'));
         const collect = (data) => {
           const keep = Math.min(data.length, limits.outputBytes - length);
           if (keep > 0) {
@@ -283,15 +220,8 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
         abortSignal.addEventListener('abort', abort, { once: true });
         if (abortSignal.aborted) abort();
         try {
-          const stat = await readFile(`/proc/${child.pid}/stat`, 'utf8');
-          const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
-          const cgroup = (await readFile(`/proc/${child.pid}/cgroup`, 'utf8')).trim().slice(3);
-          if (Number(fields[1]) !== process.pid || cgroup !== envelope.cgroup) throw new Error();
-          sandbox = await sandboxIdentity((await information)['child-pid'], child.pid, envelope);
-          launch = { pid: child.pid, parentPid: Number(fields[1]), startTime: fields[19], cgroup, sandbox };
-          // Close is a pipe-drain event, not proof of namespace death. Even on normal
-          // exit, join cleanup of PID 1 before waiting for inherited output pipes.
-          child.once('exit', () => { drain().catch(() => {}); });
+          launch = await lifetime.verified;
+          const { sandbox } = launch;
           await durableFile(`${directory}/launch.json`, JSON.stringify(launch));
           if (fixture && name === 'startup-stop') {
             // Fixed diagnostic fault: freeze this namespace before its parent-death
@@ -299,11 +229,10 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
             process.kill(sandbox.pid, 'SIGSTOP');
             process.stdout.write(`${JSON.stringify({ envelope, backendIdentity: await identity(process.pid), observed: [await identity(child.pid), sandbox] })}\n`);
           }
-          if (reason) await drain();
+          if (reason) await lifetime.drain();
           else child.stdio[4].end(); // Release only after BOTH launcher and PID 1 are verified.
-        } catch { stop('launcher-verification'); await drain(); }
-        const { exitCode, exitSignal } = await terminal;
-        await stopping;
+        } catch { stop('launcher-verification'); await lifetime.drain(); }
+        const { exitCode, exitSignal } = await lifetime.finished();
         const eventsAfter = await resourceEvents(envelope);
         const events = Object.fromEntries(Object.keys(eventsBefore).map((key) => [key, eventsAfter[key] - eventsBefore[key]]));
         if (events.pidsMax > 0) reason ??= 'task-limit';
@@ -329,9 +258,9 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
       } finally {
         clearTimeout(timer); abortSignal.removeEventListener('abort', abort);
         // Also drain a child if receipt IO or verification throws after spawning it.
-        if (child) await drain();
-        await terminal;
-        await log?.close(); await filter?.close(); await probes?.close();
+        const drainFailure = await lifetime?.drain().catch((error) => error);
+        try { await Promise.all([log?.close(), filter?.close(), probes?.close()]); }
+        finally { if (drainFailure) throw drainFailure; }
       }
     })();
     current = operation;

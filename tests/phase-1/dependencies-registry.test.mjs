@@ -1,9 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { runOwnedScope } from '../fixtures/containment-harness.mjs';
 import { mkdtemp, chmod, readdir, rm } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 // Agreed seams: trusted owner preparation and verified dependency mounts, with actual Bun and a loopback registry.
@@ -17,10 +15,9 @@ async function scenario(t, name) {
     await writable(root); await rm(root, { recursive: true, force: true });
   });
   const runner = fileURLToPath(new URL('./dependencies-registry-runner.mjs', import.meta.url));
-  const { stdout } = await promisify(execFile)('/usr/bin/systemd-run', ['--user', '--scope', '--quiet', '--collect',
-    `--unit=factory-contained-${randomUUID()}.scope`, '--property=MemoryMax=4294967296', '--property=MemorySwapMax=0', '--property=TasksMax=256',
-    '--property=OOMPolicy=kill', '--', process.execPath, runner, name, root], { timeout: 60_000 });
-  return JSON.parse(stdout);
+  const terminal = await runOwnedScope(t, [runner, name, root]);
+  assert.equal(terminal.code, 0, terminal.stderr);
+  return JSON.parse(terminal.stdout);
 }
 
 test('real Bun resolves scoped and nested multi-version locked packages with bounded caret and tilde ranges', async (t) => {

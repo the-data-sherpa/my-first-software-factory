@@ -1,7 +1,8 @@
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, appendFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import assert from 'node:assert/strict';
 import { processIdentity, waitForCleanup } from '../../src/containment-process-fixtures.mjs';
@@ -13,7 +14,8 @@ export async function ownedProcesses(unit) {
   const { stdout } = await exec('/usr/bin/systemctl', ['--user', 'show', unit, '--property=ControlGroup', '--value'], { env, timeout: 2000 });
   const cgroup = stdout.trim();
   // Collected units have an empty ControlGroup; never read the root cgroup.
-  if (!cgroup.endsWith(`/${unit}`)) return [];
+  if (!cgroup) return [];
+  assert.ok(cgroup.endsWith(`/${unit}`), 'Unexpected owned scope cgroup.');
   const pids = await readFile(`/sys/fs/cgroup${cgroup}/cgroup.procs`, 'utf8').catch((error) => {
     if (error.code === 'ENOENT') return ''; throw error;
   });
@@ -24,12 +26,50 @@ export async function stopOwnedScope(unit) {
   await exec('/usr/bin/systemctl', ['--user', 'kill', '--kill-whom=all', '--signal=KILL', unit], { env, timeout: 2000 }).catch(() => {});
   await exec('/usr/bin/systemctl', ['--user', 'stop', unit], { env, timeout: 2000 }).catch(() => {});
   await exec('/usr/bin/systemctl', ['--user', 'reset-failed', unit], { env, timeout: 2000 }).catch(() => {});
-  assert.deepEqual(await waitForCleanup(observed), []);
-  assert.deepEqual(await ownedProcesses(unit), []);
+  const survivors = await waitForCleanup(observed); const remaining = await ownedProcesses(unit);
+  if (process.env.FACTORY_TEST_SCOPE_AUDIT) await appendFile(process.env.FACTORY_TEST_SCOPE_AUDIT,
+    `${JSON.stringify({ unit, observed, survivors, remaining, drainedAt: new Date().toISOString() })}\n`, { mode: 0o600 });
+  assert.deepEqual(survivors, []);
+  assert.deepEqual(remaining, []);
 }
 export async function startDiagnostic(t, scenario) {
   const directory = await mkdtemp('/tmp/factory-containment-');
-  const child = spawn(process.execPath, [launcher, 'diagnose', scenario, directory], { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+  const harness = await startForeground(t, ['diagnose', scenario, directory]);
+  t.after(async () => { await harness.dispose(); await rm(directory, { recursive: true, force: true }); });
+  return { ...harness, directory };
+}
+// Trusted test workers only. Register the exact name before systemd-run is spawned;
+// unlike execFile's timeout, this watchdog kills the scope, not just the launcher.
+export async function runOwnedScope(t, args, { timeout = 60000, environment = {} } = {}) {
+  const unit = `factory-contained-${randomUUID()}.scope`;
+  let child; let finished; let disposed; let timer; let stdout = ''; let stderr = '';
+  const dispose = () => disposed ??= (async () => {
+    child?.kill('SIGKILL');
+    await delay(100); await stopOwnedScope(unit);
+    await finished;
+  })();
+  t.after(dispose);
+  child = spawn('/usr/bin/systemd-run', ['--user', '--scope', '--quiet', '--collect', `--unit=${unit}`,
+    '--property=MemoryMax=4294967296', '--property=MemorySwapMax=0', '--property=TasksMax=256', '--property=OOMPolicy=kill',
+    '--', process.execPath, ...args], { env: { ...env, ...environment }, stdio: ['ignore', 'pipe', 'pipe'] });
+  child.stdout.on('data', (data) => { stdout += data; }); child.stderr.on('data', (data) => { stderr += data; });
+  finished = new Promise((resolve, reject) => {
+    child.on('error', reject); child.on('close', (code, signal) => resolve({ code, signal, stdout, stderr, unit }));
+  });
+  try {
+    return await Promise.race([finished, new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Owned scope ${unit} exceeded ${timeout}ms: ${stderr}`)), timeout);
+    })]);
+  } finally { clearTimeout(timer); await dispose(); }
+}
+export async function runForeground(t, args, timeout = 60000) {
+  const h = await startForeground(t, args);
+  const terminal = await h.bounded(h.finished, timeout);
+  assert.equal(terminal.code, 0, terminal.stderr);
+  return terminal;
+}
+export async function startForeground(t, args) {
+  const child = spawn(process.execPath, [launcher, ...args], { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
   let stdout = ''; let stderr = ''; let unit; let disposed;
   child.stdout.on('data', (chunk) => { stdout += chunk; });
   child.stderr.on('data', (chunk) => { stderr += chunk; });
@@ -50,7 +90,6 @@ export async function startDiagnostic(t, scenario) {
     // the exact pending scope to appear before declaring this fixture drained.
     if (unit) { await delay(100); await stopOwnedScope(unit); }
     await finished;
-    await rm(directory, { recursive: true, force: true });
   })();
   t.after(dispose);
   async function bounded(promise, ms) {
@@ -72,7 +111,7 @@ export async function startDiagnostic(t, scenario) {
       return JSON.parse(stdout.slice(0, stdout.indexOf('\n')));
     })(), 8000);
   }
-  return { directory, child, unit, ready, finished, exited, bounded, dispose };
+  return { child, unit, ready, finished, exited, bounded, dispose };
 }
 export async function diagnose(t, scenario, timeout = 30000) {
   const harness = await startDiagnostic(t, scenario);

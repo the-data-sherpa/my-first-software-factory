@@ -1,20 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { randomUUID } from 'node:crypto';
+import { runOwnedScope } from '../fixtures/containment-harness.mjs';
 import { fileURLToPath } from 'node:url';
 import { mkdtemp, chmod, readdir, rm } from 'node:fs/promises';
 import { openFactory, inspectHistory } from '../../src/factory.mjs';
 import { admitWorkspace, prepareWorkspace } from '../../src/workspace.mjs';
 
-const exec = promisify(execFile);
 async function scoped(t, scenario = 'prepare') {
   const root = await mkdtemp('/tmp/factory-dependencies-');
-  const unit = `factory-contained-${randomUUID()}.scope`;
   t.after(async () => {
-    await exec('/usr/bin/systemctl', ['--user', 'stop', unit]).catch(() => {});
-    await exec('/usr/bin/systemctl', ['--user', 'reset-failed', unit]).catch(() => {});
     async function writable(path) {
       await chmod(path, 0o700);
       for (const entry of await readdir(path, { withFileTypes: true })) if (entry.isDirectory()) await writable(`${path}/${entry.name}`);
@@ -23,17 +17,10 @@ async function scoped(t, scenario = 'prepare') {
   });
   const worker = fileURLToPath(new URL(scenario.startsWith('registry-')
     ? './dependency-registry-application-worker.mjs' : './dependency-application-worker.mjs', import.meta.url));
-  const operation = exec('/usr/bin/systemd-run', ['--user', '--scope', '--quiet', '--collect', `--unit=${unit}`,
-    '--property=MemoryMax=4294967296', '--property=MemorySwapMax=0', '--property=TasksMax=256', '--property=OOMPolicy=kill',
-    '--', process.execPath, worker, root, scenario], { timeout: 30_000, maxBuffer: 1024 * 1024,
-    env: { PATH: '/usr/bin:/bin', HOME: root, XDG_RUNTIME_DIR: `/run/user/${process.getuid()}`,
-      DBUS_SESSION_BUS_ADDRESS: `unix:path=/run/user/${process.getuid()}/bus` },
-  });
-  if (scenario.startsWith('crash-')) {
-    try { await operation; assert.fail('The disposable worker must crash at its checkpoint.'); }
-    catch (error) { assert.notEqual(error.code, 0); return JSON.parse(error.stdout); }
-  }
-  return JSON.parse((await operation).stdout);
+  const terminal = await runOwnedScope(t, [worker, root, scenario], { timeout: 30000, environment: { PATH: '/usr/bin:/bin', HOME: root } });
+  if (scenario.startsWith('crash-')) assert.notEqual(terminal.code, 0, 'The disposable worker must crash at its checkpoint.');
+  else assert.equal(terminal.code, 0, terminal.stderr);
+  return JSON.parse(terminal.stdout);
 }
 
 test('explicit owner registry authorization is saved before locked fetching and installation', { timeout: 40_000 }, async (t) => {

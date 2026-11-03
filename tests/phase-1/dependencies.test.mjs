@@ -1,9 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFile, mkdtemp, rm, chmod, readdir } from 'node:fs/promises';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
+import { runForeground } from '../fixtures/containment-harness.mjs';
 import { fixture, git } from './workspace-fixture.mjs';
 import { admitWorkspace, prepareWorkspace } from '../../src/workspace.mjs';
 import { admitDependencies, prepareDependencies, serializeDependencyError } from '../../src/dependencies.mjs';
@@ -32,8 +30,7 @@ async function diagnose(t, scenario) {
     }
     await writable(root); await rm(root, { recursive: true, force: true });
   });
-  const launcher = fileURLToPath(new URL('../../bin/factory-contained.mjs', import.meta.url));
-  const { stdout } = await promisify(execFile)(process.execPath, [launcher, 'dependencies-diagnose', scenario, root], { timeout: 60_000 });
+  const { stdout } = await runForeground(t, ['dependencies-diagnose', scenario, root]);
   return JSON.parse(stdout);
 }
 
@@ -51,6 +48,8 @@ test('owner preparation uses real frozen Bun with root and trusted dependency sc
   assert.deepEqual(result.preparation.boundary, { tcp: 'EPERM', udp: 'EPERM', inputReadOnly: true, privatePathsHidden: true, environmentScrubbed: true,
     scratchBytes: 268435456, noNewPrivileges: true, seccomp: true });
   assert.equal(result.preparation.launch.parentPid, result.backendPid);
+  assert.equal(result.preparation.launch.sandbox.parentPid, result.preparation.launch.pid);
+  assert.equal(result.preparation.suppression.launch.sandbox.parentPid, result.preparation.suppression.launch.pid);
   assert.equal(result.preparation.envelope.memoryBytes, 4294967296);
   assert.equal(result.preparation.envelope.tasks, 256);
 });
@@ -113,8 +112,7 @@ test('owner preparation refuses another owner and drains cancelled sandbox desce
 test('only the explicit foreground owner command turns a saved admission into a prepared bundle', async (t) => {
   const admitted = await diagnose(t, 'admit');
   assert.equal(admitted.before.status, 'not-prepared');
-  const launcher = fileURLToPath(new URL('../../bin/factory-contained.mjs', import.meta.url));
-  const { stdout } = await promisify(execFile)(process.execPath, [launcher, 'prepare-dependencies', admitted.intentPath], { timeout: 30_000 });
+  const { stdout } = await runForeground(t, ['prepare-dependencies', admitted.intentPath], 30000);
   const receipt = JSON.parse(stdout);
   assert.equal(receipt.status, 'prepared');
   assert.equal(receipt.intentId, admitted.before.intentId);
