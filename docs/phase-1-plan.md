@@ -323,12 +323,20 @@ Completed smoke after a crash is not executor completion; interrupted execution 
 Normal drafts report `draft-produced / QUALIFICATION_REQUIRED`, with `reviewReady: false`.
 No-change, failure, stop, and uncertainty remain distinct. Failed drainage fences ownership through reporting failures.
 
-Parent verification passed **269/269**, with no exclusions or skips, plus the **1/1** browser regression.
-The **11/11** new application tests exercise real mode wiring, new files, CLI reconnect, stop, refusal, and three crash windows.
-Three retained application examples passed separately. All **164/164** recorded exact scopes were inactive and empty.
-Independent review and controlled #8 acceptance remain pending.
+Initial integration verification passed **269/269**, plus the **1/1** browser regression, with 164 recorded scopes inactive and empty.
+Independent standards and specification reviews then reproduced two distinct P2 defects: output-limit stops did not revoke authority, and SDK output truncation removed file-read pagination metadata.
+The parent reproduced and corrected both. Check limit stops now latch an incomplete budget-limited outcome and prevent later work and handoff; ordinary assertion failures remain feedback.
+Encoded read/check responses remain bounded valid JSON, with exact UTF-8 continuation offsets and retained artifact references.
+
+Final verification passed **274/274**, with no exclusions or skips, plus the **1/1** browser regression.
+This includes **13** application/CLI cases and **38** executor-module cases. Five focused correction cases passed separately.
+All **328/328** parent-recorded exact scopes were inactive and empty, including red reproductions and retained examples.
+The parent accepts the controlled #8 checkpoint after these corrections and verification, not the complete owner path or real maintenance demonstration.
 
 Ticket #9 must still qualify actual executor-produced drafts through the live opaque handoff, with both stages sharing ownership and budgets.
-The [qualification parent review](implementation/ticket-09-parent-review.md) records the rejected first module result and required corrections.
+The [qualification parent review](implementation/ticket-09-parent-review.md) records the rejected first module result, returned corrections, and a further parent correction to resolved Vitest worker settings.
+Those qualification commits remain isolated and unaccepted.
+A shared implementation gap remains: the admission command contains `--minWorkers=1`, absent from the supported Vitest 4.0.17 CLI definitions.
+Resolve the command and execution-profile binding together before claiming a complete owner path.
 Neither a model claim nor a factory-owned oracle substitutes for retained candidate regression tests failing on base and passing on draft.
 Live model acceptance, real Vanguard/toolchain compatibility, and the real #10 demonstration remain separately authorized work.

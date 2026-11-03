@@ -21,7 +21,7 @@ async function cleanup(root) {
   }
   await writable(root); await rm(root, { recursive: true, force: true });
 }
-for (const scenario of ['draft', 'cli-draft', 'cli-refusal', 'cli-stop', 'no-change', 'drain-report']) {
+for (const scenario of ['draft', 'cli-draft', 'cli-refusal', 'cli-stop', 'cli-check-output-limit', 'cli-pagination', 'no-change', 'drain-report']) {
   test(`repository executor application and CLI: ${scenario}`, async t => {
     const root = await mkdtemp('/tmp/factory-dependencies-'); let drained = false;
     try {

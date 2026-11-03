@@ -2,7 +2,7 @@
 
 Reviewed implementation: `15361b393fc64c0a04313f006eb158ff5ac5b039`, based on `48c4058`.
 The parent has not integrated or accepted ticket #9.
-Ticket #8 remains a separate implementation stream.
+Ticket #8 was a separate implementation stream at this first review. Its controlled checkpoint is now accepted; #9 is still not integrated.
 This is a focused parent correctness check, not the final independent review.
 
 ## Reproduced: the patch test need not expose the defect
@@ -84,3 +84,50 @@ Public first-party API documentation can inform implementation without downloadi
 5. Run combined verification and independent review before accepting #9.
 
 No production-model call, real Vanguard access, public package download, installed service, global change, tracker write, or push occurred.
+
+## Returned correction and parent follow-up
+
+The correction worktree integrated the supplied module as `f03519d`, then returned `a6f5c88` with candidate-base overlays and structured Vitest 4.0.17 reporting.
+It runs identical retained candidate bytes against base code and draft code, in addition to the independent oracle.
+The synthetic runner now imports the emitted configuration and reporter rather than writing qualification JSON directly.
+The child reported **286/286** full tests, **1/1** browser test, and **255/255** recorded scopes inactive and empty.
+These are child-checkpoint results, not combined parent verification or real-package acceptance.
+
+The parent independently reran the retained tautology and valid-extra-literal cases: **2/2** passed.
+The former returned `blocked / REGRESSION_UNVERIFIED`; the latter qualified only as controlled evidence with `reviewReady: false`.
+The code retains the complete candidate test overlay and validates unchanged base bytes outside that file.
+Actual #8 handoff composition is still absent from those fixtures.
+
+### Additional reporter defect reproduced and corrected
+
+At `a6f5c88`, every qualification command disabled file parallelism, but the reporter required two resolved workers.
+The retained tagged [Vitest 4.0.17 config contract](https://github.com/vitest-dev/vitest/blob/v4.0.17/packages/vitest/src/node/types/config.ts) states that serial file execution overrides `maxWorkers` to one.
+The fixture had masked this by always reporting two workers.
+
+The parent changed only fixture config resolution to follow that documented behavior.
+The valid-extra-literal regression then failed: the actual emitted reporter rejected `onInit` with `Unsupported qualification runtime`.
+The qualifier returned `blocked / REGRESSION_UNVERIFIED` instead of the expected controlled qualification.
+This is a controlled contract reproduction, not a run of the real Vitest distribution.
+
+The parent corrected the reporter, retained and validated the resolved settings, and added negative worker/parallelism cases.
+That separate correction is committed as `d1b17b9` in the completed qualification worktree, not on parent `main`.
+The positive reproduction now passes; tautologies remain rejected.
+Verification passed **4/4** focused cases, **65/65** qualification cases, **1/1** browser test, and a separate **73/73** exact-scope audit.
+Syntax, whitespace, and unchanged dependency/runtime checks passed. The temporary dependency symlink was removed and the checkout is clean.
+The parent did not repeat the unrelated 223-test baseline in that branch.
+
+Evidence and private fixture indexes: `/tmp/factory-ticket09-parent-workers/`.
+`red.log`, `red/input.json`, and `red/result.json` retain the failure and its source/check location.
+`green.log`, `focused.log`, `qualification.log`, and `scope-audit.json` retain correction evidence and cleanup observations.
+No fetched source was executed. No new public request, real target/model operation, factory dependency installation, tracker write, or push occurred.
+
+### Shared implementation gap still open
+
+The existing admission command still contains `--minWorkers=1`, which is absent from the retained Vitest 4.0.17 CLI definitions.
+The qualifier's corrected reporting path does not repair that earlier gate.
+Resolve the baseline command and admission profile together without bypassing healthy-baseline validation or inventing compatibility evidence.
+This is an implementation gap, separate from unperformed real-distribution acceptance.
+
+Next: resolve that shared conflict, integrate the returned commits after #8's controlled acceptance, compose actual executor drafts and the live handoff, persist at most one work item, and verify lifecycle and freshness through the application/CLI.
+Run combined verification and independent #9 review before accepting qualification.
+The complete owner path and Phase 1 maintenance demonstration remain unfinished.

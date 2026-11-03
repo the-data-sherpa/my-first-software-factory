@@ -2,7 +2,7 @@
 
 ## Status
 
-Phase 0 evaluation is complete, with runnable verification probes, [findings](docs/phase-0-findings.md), and an [accepted integration decision](docs/adr/0001-embed-pi-durable.md). Phase 1 tickets #1–#7 have accepted controlled implementation checkpoints. Ticket #8 now connects bounded draft execution to the application and CLI; independent review and acceptance are pending. This is not yet a working maintenance factory. Dependencies and Node 24.21.0 are pinned locally. No credentials, services, or schedules have been installed or changed.
+Phase 0 evaluation is complete, with runnable verification probes, [findings](docs/phase-0-findings.md), and an [accepted integration decision](docs/adr/0001-embed-pi-durable.md). Phase 1 tickets #1–#8 have accepted controlled implementation checkpoints. Ticket #8 connects bounded draft execution to the application and CLI; qualification and the complete owner path remain unfinished. This is not yet a working maintenance factory. Dependencies and Node 24.21.0 are pinned locally. No credentials, services, or schedules have been installed or changed.
 
 The factory's job is repository maintenance, starting with [`vanguard`](https://github.com/the-data-sherpa/vanguard) as its first project. Vanguard replaces `crewroom` by the owner's decision on 2026-11-02. The restart gate passes for `@earendil-works/pi-durable` 1.5.0. The owner accepted direct embedding with SQLite and Pi's `ModelRuntime`, rather than adopting Durable Pi's applications. The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including outcome-first execution. A complexity classifier and specialist team are not required. The owner separately authorized ticket implementation. See [Running the controlled CLI](#running-the-controlled-cli) and the [implementation record](docs/phase-1-plan.md#implementation-record). Production-model availability and Vanguard execution remain unverified.
 
@@ -329,7 +329,7 @@ See the [ticket #7 implementation record](docs/implementation/ticket-07.md) for 
 ## Bounded draft executor
 
 Ticket #8 now connects the repository executor to the application and CLI.
-Its controlled implementation awaits independent review and acceptance.
+The parent accepted its controlled checkpoint after independent review, two reproduced corrections, and full verification.
 After separate dependency preparation, close that backend and explicitly select executor mode:
 
 ```bash
@@ -360,9 +360,15 @@ Drafts report `draft-produced / QUALIFICATION_REQUIRED`, never readiness; no-cha
 Reopening after a crash does not resume work or equate completed smoke with completed execution.
 Uncertain drainage retains backend ownership, even if failure reporting also fails.
 
-Parent verification passed **269/269**, with no exclusions or skips, plus the **1/1** browser regression.
-All **164/164** recorded exact scopes were inactive and empty.
-Qualification, live provider acceptance, real Vanguard compatibility, and the #10 demonstration remain separate gates.
+Independent reviews found two executor defects: output-limit stops retained handoff authority, and SDK truncation removed file-read pagination metadata.
+Both have behavioral regressions and parent corrections. Encoded responses now preserve bounded valid JSON and exact UTF-8 continuation offsets.
+Check output-limit stops block further work and handoff; ordinary assertion failures remain feedback.
+Final parent verification passed **274/274**, with no exclusions or skips, plus the **1/1** browser regression.
+All **328/328** parent-recorded exact scopes were inactive and empty.
+
+A known shared implementation gap remains: the baseline command uses `--minWorkers=1`, absent from Vitest 4.0.17's tagged CLI definitions.
+The command and admission profile must be corrected before claiming a complete owner path; controlled packages do not establish real compatibility.
+Qualification composition, live provider acceptance, real Vanguard compatibility, and the #10 demonstration remain separate gates.
 See the [ticket #8 implementation record](docs/implementation/ticket-08.md) for interfaces, retained examples, and recovery limits.
 
 ## Contained execution tools
@@ -417,7 +423,7 @@ npm run phase0:credentials  # Optional read-only local discovery. No inference.
 
 For an existing browser, use `CHROMIUM_PATH=/usr/bin/chromium npm run test:ui` instead of installing Chromium.
 See [Phase 0 findings](docs/phase-0-findings.md) for the commands, evidence, gaps, safety limits, and consensus ledger.
-The owner accepted direct integration in [ADR 0001](docs/adr/0001-embed-pi-durable.md) on 2026-11-02. The Phase 1 backend includes the controlled foundation through #7 and the integrated #8 executor, which awaits independent review. Real maintenance execution remains unverified.
+The owner accepted direct integration in [ADR 0001](docs/adr/0001-embed-pi-durable.md) on 2026-11-02. The Phase 1 backend includes accepted controlled checkpoints through the #8 executor. Real maintenance execution remains unverified.
 
 **Time limit:** two working sessions. The manual-run restart gate passes, so the plain Node.js/SQLite fallback is not triggered.
 
@@ -425,7 +431,7 @@ The owner accepted direct integration in [ADR 0001](docs/adr/0001-embed-pi-durab
 
 ### 1. Complete one manual run
 
-The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including the minimal outcome-first baseline, then separately authorized implementation. Tickets #1–#6 supply the controlled foundation, and #7 joins the startup gates. The parent accepted #7 after independent review. The integrated #8 executor awaits its independent review and acceptance. Qualification, ticket #10, and live model/Vanguard acceptance remain before the real maintenance demonstration.
+The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including the minimal outcome-first baseline, then separately authorized implementation. Tickets #1–#6 supply the controlled foundation, and #7 joins the startup gates. The parent accepted #7 after independent review. The parent also accepted #8's controlled checkpoint after review corrections. The shared Vitest baseline-command gap, qualification, ticket #10, and live model/Vanguard acceptance remain before the real maintenance demonstration.
 
 - Configure Vanguard for one human-selected offline logic/test change and a minimal set of tools. Use one-shot Vitest and lint as candidate checks, not the Sentry-enabled build or live-account integrations.
 - Record a local `main` commit and create a factory-owned worktree and branch from it using plain Git. Leave the existing checkout untouched; do not automatically fetch, pull, or create `dev`.

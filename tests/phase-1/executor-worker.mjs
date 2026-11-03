@@ -22,6 +22,9 @@ globalThis.fetch = async () => { throw new Error('Uncontrolled network forbidden
 const fixture = await dependencyFixture(root, { copyToolchain: true, checkSuffix: `
 if (process.argv.includes('run')) {
   try { await readFile('/work/helper.test.mjs'); await import('/work/helper.test.mjs');
+    if (${JSON.stringify(scenario === 'check-output-limit')}) await new Promise(resolve => process.stdout.write('x'.repeat(1048577), resolve));
+    if (${JSON.stringify(scenario === 'check-assertion-feedback')}) (await import('node:assert/strict')).default.equal(1, 2);
+    if (${JSON.stringify(scenario === 'check-encoded-feedback')}) await new Promise(resolve => process.stdout.write(String.fromCharCode(0).repeat(8192), resolve));
     if (${JSON.stringify(['stop-tool', 'deadline-tool'].includes(scenario))}) await new Promise(r => setTimeout(r, 1500));
   }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -91,6 +94,13 @@ const transport = controlledTransport(async ({ payload }, index) => {
   if (index === 3) return toolResponse('write_file', { path: 'helper.mjs', text: 'export const normalize = text => text.trim();\n' }, 'write');
   if (index === 4) return toolResponse('write_file', { path: 'helper.test.mjs', text: 'import assert from "node:assert/strict";\nimport { normalize } from "./helper.mjs";\nassert.equal(normalize("100 Main # 2  "), "100 Main # 2");\n' }, 'test');
   if (index === 5) return toolResponse('run_check', { name: 'vitest' }, 'vitest');
+  if (index === 6 && ['check-assertion-feedback', 'check-encoded-feedback'].includes(scenario)) {
+    const outputs = payload.input.filter(item => item.type === 'function_call_output').map(item => item.output);
+    assert.ok(outputs.every(output => Buffer.byteLength(output) <= 16384));
+    const feedback = outputs.map(output => JSON.parse(output));
+    if (scenario === 'check-assertion-feedback') assert.ok(feedback.some(item => item.passed === false && item.reason === 'exit'));
+    else assert.ok(feedback.some(item => item.passed === true && item.reason === 'passed' && item.outputTruncated === true && item.artifact));
+  }
   if (index === 6) return toolResponse('run_check', { name: 'lint' }, 'lint');
   return eventsResponse({ text: 'The local draft and checks are retained. Independent qualification is still required.' });
 });
@@ -141,6 +151,11 @@ try {
     }
     return { ...handle, finished: handle.finished.then(async value => {
       result = value;
+      if (scenario === 'check-output-limit') {
+        assert.equal(value.status, 'budget-limited', 'A check output-limit stop cannot produce a successful draft handoff.');
+        assert.equal(value.reason, 'CHECK_OUTPUT_LIMIT');
+        await assert.rejects(handle.handoff(), { code: 'EXECUTOR_AUTHORITY_REQUIRED' });
+      }
       if (value.status === 'draft-produced') {
         await assert.rejects(executor.start(startInput), { code: 'DESTINATION_EXISTS' });
         const identity = { runId: input.runId, kind: 'controlled-fixture' };
@@ -222,14 +237,25 @@ try {
   await until(() => factory.inspectRun(admitted.id), r => ['blocked', 'failed', 'stopped'].includes(r.status));
   if (bridgeError) throw bridgeError;
   const unchanged = ['no-change', 'fabricated'];
-  const complete = ['draft', 'stale-handoff', 'closed-handoff', 'transient-retry'];
+  const complete = ['draft', 'stale-handoff', 'closed-handoff', 'transient-retry', 'check-assertion-feedback', 'check-encoded-feedback'];
   const expected = complete.includes(scenario) ? 'draft-produced' : unchanged.includes(scenario) ? 'no-change'
-    : ['output-limit', 'tool-budget', 'model-budget'].includes(scenario) || scenario.startsWith('deadline-') ? 'budget-limited'
+    : ['output-limit', 'check-output-limit', 'tool-budget', 'model-budget'].includes(scenario) || scenario.startsWith('deadline-') ? 'budget-limited'
     : scenario.startsWith('stop-') || scenario === 'shutdown-model' ? 'stopped' : 'failed';
   assert.equal(result?.status, expected, JSON.stringify({ result, projection: projection?.run.executor }));
   const run = await factory.inspectRun(admitted.id);
   const evidence = await inspectExecutor(projection);
   assert.equal(evidence.reviewReady, false);
+  if (['check-output-limit', 'check-assertion-feedback'].includes(scenario)) {
+    const checks = await Promise.all(evidence.operations.filter(op => op.type === 'tool-result' && op.tool === 'run_check')
+      .map(async op => JSON.parse(await readFile(join(projection.directory, op.artifact), 'utf8')).result));
+    assert.equal(checks[0].passed, false);
+    assert.equal(checks[0].reason, scenario === 'check-output-limit' ? 'output-limit' : 'exit');
+    if (scenario === 'check-output-limit') {
+      assert.equal(checks[0].outputBytes, 1048576);
+      assert.equal(checks.length, 1, 'No later check after output-limit termination.');
+      assert.equal(transport.requests.length, 5, 'No later model request after output-limit termination.');
+    } else assert.equal(checks[1].passed, true, 'An ordinary assertion failure remains feedback, not a latched resource limit.');
+  }
   if (complete.includes(scenario)) {
     assert.equal(evidence.artifactStatus, scenario === 'stale-handoff' ? 'invalidated' : 'retained');
     assert.equal(evidence.plan.provenance, 'model-authored');
@@ -241,7 +267,7 @@ try {
     const receipt = await inspectExecution(originalInput.directory);
     assert.equal(receipt.status, 'done'); assert.equal(receipt.safety.kind, 'repository-executor');
     await assert.rejects(verifyExecutorHandoff(handoffToken, { runId: admitted.id, kind: 'controlled-fixture' }), { code: 'EXECUTOR_AUTHORITY_REQUIRED' });
-  } else if (['output-limit', 'dependency-change', 'source-change', 'profile-change', 'persistence-after-write', 'persistence-report', 'stop-tool', 'deadline-tool', 'stop-finalization'].includes(scenario)) {
+  } else if (['output-limit', 'check-output-limit', 'dependency-change', 'source-change', 'profile-change', 'persistence-after-write', 'persistence-report', 'stop-tool', 'deadline-tool', 'stop-finalization'].includes(scenario)) {
     assert.equal(await readFile(join(run.workspace.intent.worktree, 'helper.mjs'), 'utf8'), 'export const normalize = text => text.trim();\n');
     assert.equal(evidence.artifactStatus, 'incomplete');
     assert.ok(evidence.operations.some(e => e.type === 'tool-result' && e.tool === 'write_file'), 'Passive evidence includes real effects even when saving their projection failed.');

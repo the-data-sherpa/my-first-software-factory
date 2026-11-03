@@ -29,7 +29,7 @@ async function cleanup(root) {
   await writable(root); await rm(root, { recursive: true, force: true });
 }
 for (const scenario of ['draft', 'no-change', 'fabricated', 'write-denied', 'schema-denied', 'tool-denied', 'duplicate-call',
-  'preflight-failed', 'output-limit', 'overflow-tool', 'dependency-change', 'source-change', 'profile-change',
+  'preflight-failed', 'output-limit', 'check-output-limit', 'check-assertion-feedback', 'check-encoded-feedback', 'overflow-tool', 'dependency-change', 'source-change', 'profile-change',
   'persistence-after-write', 'persistence-report', 'stale-handoff', 'closed-handoff', 'stop-model', 'stop-tool', 'shutdown-model',
   'stop-draining-tooluse', 'stop-finalization', 'deadline-model', 'deadline-tool', 'model-drain', 'model-drain-report',
   'tool-budget', 'model-budget', 'transient-retry', 'pristine-transition', 'scope-expansion', 'tool-startup-drain', 'tool-drain-report']) {

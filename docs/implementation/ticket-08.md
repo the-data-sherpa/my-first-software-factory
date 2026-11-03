@@ -259,8 +259,56 @@ Evidence resides at `/tmp/factory-ticket08-parent-{admission-red,execution-red,c
 The audit is `/tmp/factory-ticket08-parent-scope-audit.json`.
 Private example indexes under `/tmp/factory-ticket08-parent-retained/` identify retained disposable state; cleanup requires owner authorization.
 Syntax, whitespace, and unchanged package/runtime checks passed.
-Independent review and controlled #8 acceptance remain pending.
-This checkpoint does not establish live model availability, real Vanguard compatibility, or the Phase 1 maintenance demonstration.
+This was the pre-review checkpoint. The following review and corrections supersede its acceptance status.
+It does not establish live model availability, real Vanguard compatibility, or the Phase 1 maintenance demonstration.
+
+### Independent review and parent corrections
+
+Both reviews examined frozen `2e547f8` against `00bd62f`.
+The standards review found one P2 contract violation: a check output-limit stop still allowed normal draft completion and handoff.
+It reported no heuristic maintainability concern.
+The specification review independently reproduced that defect, including a later write, and found a second P2 defect in encoded read pagination.
+The two axes therefore found two distinct defects, not three.
+All observed outcomes remained unqualified; these were executor contract failures, not false readiness verdicts.
+
+The parent added behavioral regressions before fixing each defect:
+
+- A real contained check exceeded its 1 MiB output cap but the executor returned `draft-produced`.
+  The correction retains the runner result, latches `CHECK_OUTPUT_LIMIT`, suppresses later model/tool work, and refuses handoff.
+  Application and CLI inspection now show `budget-limited` with the retained partial draft.
+  An ordinary assertion failure remains inspectable feedback rather than a terminal resource limit.
+- JSON escaping expanded a valid bounded file read beyond the SDK's 20,000-byte tool-output cap.
+  The actual outgoing provider payload contained truncation text and lost its continuation metadata.
+  The correction bounds the encoded envelope to 16 KiB before SDK handling.
+  It returns a UTF-8 prefix with exact byte counts and continuation offsets.
+  Check feedback uses the same encoded bound and retains an artifact reference when its text is shortened.
+
+The pagination regression reads all pages of controlled newline, NUL, multibyte, and escaped text through the real SDK payload path.
+It checks valid JSON, bounded encoded size, exact content, forward progress, and final EOF.
+A separate check-feedback case covers escaping expansion without a runner output-limit failure.
+No production limits, runtime pins, package graph, or containment policy were weakened.
+
+Final parent verification under Node 24.21.0:
+
+- **5/5** focused correction cases, with retained private evidence.
+- **274/274** full-suite tests, with no exclusions or skips; this includes **13** application/CLI cases and **38** executor-module cases.
+- Existing browser regression: **1/1**.
+- All **328/328** parent-recorded exact scopes inactive and empty, including initial integration, red reproductions, retained examples, and final verification.
+- Syntax, whitespace, local documentation links, and unchanged dependency/runtime checks passed.
+
+Evidence: `/tmp/factory-ticket08-{output-limit-red,pagination-red,review-fixes-green,reviewed-full-suite,reviewed-browser}.log`.
+The audit is `/tmp/factory-ticket08-reviewed-scope-audit.json`; private correction examples are under `/tmp/factory-ticket08-output-limit-evidence/`.
+Reviewer evidence is under `/tmp/factory-ticket08-standards-f19Q9G/` and `/tmp/factory-ticket08-review-c53d08a5/`.
+The standards reviewer audited one scope. The specification reviewer audited 34 review scopes and rechecked 164 earlier parent scopes.
+Its initial 400-second outer command timeout is not a complete passing selection: 26 cases had completed, and the exact interrupted scope was drained with state retained.
+Six additional targeted cases passed separately. A first custom-probe callback error and its fresh-state correction are recorded, not hidden by a passing rerun.
+Neither reviewer independently repeated the full suite or browser regression.
+
+The parent accepts the controlled #8 implementation checkpoint after these corrections and verification.
+This is not acceptance of the complete owner path or the Phase 1 demonstration.
+Qualification review also identified a shared baseline-command conflict: `--minWorkers=1` is absent from Vitest 4.0.17's tagged CLI definitions.
+That implementation gap must be resolved with the admission profile before the complete owner path can be claimed.
+Ticket #9 composition and work-item persistence remain separate work; live model and real distribution/Vanguard acceptance remain unverified.
 
 ## Red-green and verification record
 

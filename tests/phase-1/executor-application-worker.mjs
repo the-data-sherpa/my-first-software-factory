@@ -22,7 +22,9 @@ const exec = promisify(execFile);
 globalThis.fetch = async () => { throw new Error('Uncontrolled network forbidden'); };
 const fixture = await dependencyFixture(root, { copyToolchain: true, checkSuffix: `
 if (process.argv.includes('run')) {
-  try { await readFile('/work/helper.test.mjs'); await import('/work/helper.test.mjs'); }
+  try { await readFile('/work/helper.test.mjs'); await import('/work/helper.test.mjs');
+    if (${JSON.stringify(kind === 'check-output-limit')}) await new Promise(resolve => process.stdout.write('x'.repeat(1048577), resolve));
+  }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
 }
 ` });
@@ -30,11 +32,14 @@ const stateDir = fixture.workspaceIntent.stateDir;
 const project = { id: 'vanguard', repositoryPath: fixture.repositoryPath };
 const workspace = { admit: admitWorkspace, prepare: prepareWorkspace };
 await writeFile(join(project.repositoryPath, 'helper.mjs'), 'export const normalize = value => value;\n');
+const evidenceText = '\n'.repeat(8192) + '\0'.repeat(4096) + '🙂'.repeat(1025) + '\r\t"\\tail\n';
+if (kind === 'pagination') await writeFile(join(project.repositoryPath, 'evidence.md'), evidenceText);
 fixture.git('add', '.'); fixture.git('commit', '-m', 'controlled executor application source');
 const brief = 'Goal: Trim fixture address whitespace.\nAcceptance criteria: Preserve units and add a regression test.\nEvidence: helper.mjs.';
 const scope = { writePaths: ['helper.mjs', 'helper.test.mjs'] };
 let factory = await openFactory({ stateDir, project, workspace });
 let server; let handle; let initialized = 0; let workStarted = false;
+let readOffset = 0; let received = ''; let feedbackFailure;
 async function command(...args) {
   try {
     const { stdout } = await exec(process.execPath, [executable, ...args, '--state-dir', stateDir], {
@@ -55,6 +60,26 @@ try {
     if (index === 1) return kind === 'refusal' ? new Response('controlled refusal', { status: 401 }) : eventsResponse();
     assert.deepEqual(request.payload.tools.map(tool => tool.name), ['read_file', 'write_file', 'run_check']);
     workStarted = true;
+    if (kind === 'pagination') {
+      try {
+        if (index > 2) {
+          const response = request.payload.input.filter(item => item.type === 'function_call_output').at(-1).output;
+          assert.ok(Buffer.byteLength(response) <= 16384, `Encoded response is ${Buffer.byteLength(response)} bytes, exceeding 16384.`);
+          const page = JSON.parse(response);
+          assert.equal(page.offset, readOffset);
+          assert.equal(page.bytes, Buffer.byteLength(page.text));
+          assert.equal(page.text, Buffer.from(evidenceText).subarray(readOffset, readOffset + page.bytes).toString('utf8'));
+          received += page.text;
+          if (page.nextOffset === null) {
+            assert.equal(received, evidenceText);
+            return eventsResponse({ text: 'All evidence pages read. No source change needed.' });
+          }
+          assert.equal(page.nextOffset, readOffset + page.bytes); assert.ok(page.nextOffset > readOffset);
+          readOffset = page.nextOffset;
+        }
+        return executorToolResponse('read_file', { path: 'evidence.md', offset: readOffset }, `read-${index}`, 'Plan: read all evidence pages before deciding whether to edit.');
+      } catch (error) { feedbackFailure = error; throw error; }
+    }
     if (index === 2 && ['stop', 'drain-report'].includes(kind)) return new Response(new ReadableStream({ cancel() {
       if (kind === 'drain-report') throw new Error('Controlled transport drain failure');
     } }), { headers: { 'content-type': 'text/event-stream' } });
@@ -109,8 +134,9 @@ try {
     assert.equal(stopped.status, 'stopped');
   }
   await handle.finished;
+  if (feedbackFailure) throw feedbackFailure;
   const run = await until(() => inspect(admitted.id), value => !['admitted', 'running'].includes(value.status));
-  assert.equal(run.status, kind === 'stop' ? 'stopped' : kind === 'refusal' ? 'blocked' : 'completed');
+  assert.equal(run.status, kind === 'stop' ? 'stopped' : kind === 'refusal' ? 'blocked' : kind === 'check-output-limit' ? 'failed' : 'completed');
   assert.equal(run.outcome.reviewReady, false);
   assert.equal(run.capabilities.productionModel, false);
   if (kind === 'draft') {
@@ -129,7 +155,14 @@ try {
     assert.equal(next.offset, 64);
   }
   if (kind === 'refusal') { assert.equal(transport.requests.length, 1); assert.equal(run.counters.toolRounds, 1); }
-  if (kind === 'no-change') assert.equal(run.outcome.kind, 'no-change');
+  if (['no-change', 'pagination'].includes(kind)) assert.equal(run.outcome.kind, 'no-change');
+  if (kind === 'pagination') { assert.equal(received, evidenceText); assert.ok(readOffset > 0); }
+  if (kind === 'check-output-limit') {
+    assert.equal(run.outcome.kind, 'budget-limited'); assert.equal(run.outcome.reason, 'CHECK_OUTPUT_LIMIT');
+    assert.equal(run.executorEvidence.artifactStatus, 'incomplete'); assert.equal(run.executor.partialDraft, true);
+    assert.equal(transport.requests.length, 5); assert.equal(run.counters.toolRounds, 8);
+    assert.equal(await readFile(join(run.workspace.intent.worktree, 'helper.mjs'), 'utf8'), 'export const normalize = value => value.trim();\n');
+  }
   const attempts = transport.requests.length;
   assert.equal((await start()).id, run.id);
   assert.equal(transport.requests.length, attempts); assert.equal(initialized, 1);
