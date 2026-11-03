@@ -5,9 +5,13 @@ import { fileURLToPath } from 'node:url';
 import { runOwnedScope } from '../fixtures/containment-harness.mjs';
 import { createDraftQualification } from '../../src/qualification.mjs';
 
-for (const scenario of ['green', 'no-change', 'wrong-scope', 'same-helper-scope', 'unchanged-helper', 'fabricated', 'missing',
+for (const scenario of ['green', 'candidate-tautology', 'candidate-unrelated', 'candidate-empty', 'candidate-skipped', 'candidate-crash', 'candidate-missing',
+  'candidate-mixed-empty', 'candidate-valid-literal', 'candidate-stale-live', 'no-change', 'wrong-scope', 'same-helper-scope', 'unchanged-helper', 'fabricated', 'missing',
   'crash', 'wrong-case', 'wrong-assertion', 'malformed', 'skipped', 'no-tests', 'unrelated-error', 'final-vitest', 'final-lint', 'final-no-tests', 'final-skipped',
   'owner-advance', 'executable-base', 'deleted-file', 'mode-change', 'hidden-change', 'incomplete',
+  'ignored-reporter', 'unsupported-version', 'report-stdout', 'report-truncated', 'report-duplicate', 'report-overflow', 'report-missing-events', 'report-inconsistent',
+  'probe-empty-passes', 'probe-skips-run', 'final-missing-candidate', 'final-renamed-candidate',
+  'stale-overlay', 'stale-candidate', 'stale-report', 'stop-finalization',
   'stale-source', 'stale-patch', 'stale-test', 'stale-toolchain', 'stale-check', 'stale-profile', 'missing-new-file',
   'late-source', 'tool-limit', 'stop', 'deadline', 'report-failure', 'drain-report', 'crash-inspect']) {
   test(`independent draft qualification through trusted execution: ${scenario}`, async t => {

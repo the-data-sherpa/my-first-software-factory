@@ -2,14 +2,14 @@ import { createDraftQualification } from '../../src/qualification.mjs';
 import assert from 'node:assert/strict';
 import { writeFile, readFile, chmod, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, chmodSync } from 'node:fs';
 import { openFactory } from '../../src/factory.mjs';
 import { admitWorkspace, prepareWorkspace } from '../../src/workspace.mjs';
 import { createAdmissionExecution, verifyAdmissionHandoff } from '../../src/admission.mjs';
 import { sourceFingerprint } from '../../src/containment-files.mjs';
 import { createRunTools } from '../../src/run-tools.mjs';
 import { verifyDependencyBundle } from '../../src/dependencies.mjs';
-import { qualificationProject, draftHelper, draftTest } from '../fixtures/qualification-project.mjs';
+import { qualificationProject, draftHelper, draftTest, candidateTest } from '../fixtures/qualification-project.mjs';
 import { controlledRuntime, controlledTransport, eventsResponse } from './model-fixtures.mjs';
 import { until } from '../phase-0/helpers.mjs';
 
@@ -41,7 +41,7 @@ const execution = { ...admission, async start(input) {
     try {
       if (scenario !== 'no-change') {
         await tools.write('convex/syncHelpers.ts', scenario === 'unchanged-helper' ? draftHelper.replace(".replace(/\\s+/g, ' ').trim();", ';') : draftHelper);
-        await tools.write('lib/__tests__/normalize-address.test.ts', draftTest);
+        await tools.write('lib/__tests__/normalize-address.test.ts', candidateTest(scenario));
       }
       if (scenario === 'wrong-scope') await tools.write('unrelated.mjs', 'export const unrelated = true;');
       if (scenario === 'same-helper-scope') await tools.write('convex/syncHelpers.ts', `${draftHelper}export const unrelated = true;\n`);
@@ -77,6 +77,11 @@ const execution = { ...admission, async start(input) {
     handle = await qualifier.start({ ...input, run, dependencyRun, budget, signal: AbortSignal.any([input.signal, cancelled.signal]), saveQualification(state) {
       run.qualification = state;
       if (scenario === 'late-source' && state.checks.at(-1)?.stage === 'lint') writeFileSync(join(run.workspace.intent.worktree, 'late.mjs'), 'edit after final lint');
+      if (scenario === 'stop-finalization' && state.stage === 'complete') cancelled.abort();
+      if (scenario === 'candidate-stale-live' && state.stage === 'candidate-base-regression') {
+        chmodSync(join(input.directory, 'qualification/candidate-base/lib/__tests__/normalize-address.test.ts'), 0o600);
+        writeFileSync(join(input.directory, 'qualification/candidate-base/lib/__tests__/normalize-address.test.ts'), candidateTest('candidate-tautology'));
+      }
       if (['stop', 'deadline'].includes(scenario) && state.stage === 'base-regression' && !scheduled) {
         scheduled = true;
         setTimeout(() => { expired = scenario === 'deadline'; cancelled.abort(); }, 150);
@@ -111,14 +116,23 @@ const execution = { ...admission, async start(input) {
       final = run.qualification.verdict;
     } else { final = await handle.finished; await handle.close(); }
     assert.equal(final.reviewReady, false);
-    const green = ['green', 'owner-advance', 'executable-base'].includes(scenario) || scenario.startsWith('stale-') || ['missing-new-file', 'report-failure'].includes(scenario);
-    const expected = green ? 'qualified' : { 'no-change': 'no-change', stop: 'stopped', deadline: 'failed', incomplete: 'failed' }[scenario] ?? 'blocked';
+    const green = ['green', 'owner-advance', 'executable-base', 'candidate-valid-literal'].includes(scenario) || scenario.startsWith('stale-') || ['missing-new-file'].includes(scenario);
+    const expected = green ? 'qualified' : { 'no-change': 'no-change', stop: 'stopped', 'stop-finalization': 'stopped', deadline: 'failed', incomplete: 'failed', 'report-failure': 'failed' }[scenario] ?? 'blocked';
     assert.equal(final.status, expected, JSON.stringify(final));
     if (scenario === 'stale-source') await writeFile(join(run.workspace.intent.worktree, 'late.mjs'), 'late');
     if (scenario === 'stale-patch') await writeFile(join(input.directory, 'qualification/patch.json'), JSON.stringify({ complete: true, changes: [] }));
     if (scenario === 'stale-test') {
       const check = run.qualification.checks.find(c => c.stage === 'draft-regression');
       await writeFile(check.receipt.replace('result.json', 'selected.test.mjs'), 'changed selection');
+    }
+    if (scenario === 'stale-overlay') {
+      const path = join(input.directory, 'qualification/candidate-base/convex/syncHelpers.ts');
+      await chmod(path, 0o600); await writeFile(path, draftHelper);
+    }
+    if (scenario === 'stale-report') await writeFile(run.qualification.checks[1].receipt.replace('result.json', 'report.frame'), '2\n{}\n');
+    if (scenario === 'stale-candidate') {
+      const path = join(input.directory, 'qualification/candidate-base/lib/__tests__/normalize-address.test.ts');
+      await chmod(path, 0o600); await writeFile(path, candidateTest('candidate-tautology'));
     }
     if (scenario === 'stale-toolchain') await chmod(`${root}/bun`, 0o700);
     if (scenario === 'stale-check') await writeFile(run.qualification.checks.at(-1).receipt.replace('result.json', 'output.log'), 'different log');
@@ -132,6 +146,7 @@ const execution = { ...admission, async start(input) {
     assert.equal(callbackCalls, before, 'Inspection cannot call the trusted authority callback.');
     if (scenario.startsWith('stale-') || scenario === 'missing-new-file') assert.equal(passive.artifactStatus, 'invalid');
     if (['stop', 'deadline', 'tool-limit', 'wrong-scope', 'final-lint', 'final-vitest'].includes(scenario)) assert.equal(run.qualification.artifacts.complete, true);
+    if (scenario === 'report-failure') assert.equal(final.reason, 'QUALIFICATION_PERSIST_FAILED');
     if (scenario === 'tool-limit') assert.equal(run.qualification.checks.length, 0, 'All check rounds are reserved before dispatch.');
     if (['deleted-file', 'mode-change', 'hidden-change'].includes(scenario)) {
       assert.equal(run.qualification.artifacts.complete, true);
@@ -144,17 +159,26 @@ const execution = { ...admission, async start(input) {
     if (scenario === 'incomplete') assert.equal(callbackCalls, 0);
     if (['final-no-tests', 'final-skipped'].includes(scenario)) assert.equal(final.reason, 'FINAL_VITEST_UNVERIFIED');
     if (['wrong-case', 'wrong-assertion', 'malformed', 'skipped', 'no-tests', 'crash', 'unrelated-error'].includes(scenario)) assert.equal(final.reason, 'REGRESSION_UNVERIFIED');
+    if (scenario === 'candidate-stale-live') assert.equal(final.reason, 'QUALIFICATION_INVALIDATED');
+    if (scenario.startsWith('candidate-') && !['candidate-valid-literal', 'candidate-stale-live'].includes(scenario)) assert.equal(final.reason, 'REGRESSION_UNVERIFIED');
     if (scenario === 'final-lint') assert.equal(final.reason, 'FINAL_LINT_FAILED');
     if (scenario === 'final-vitest') assert.equal(final.reason, 'FINAL_VITEST_FAILED');
     if (scenario === 'green') {
       assert.equal(passive.status, 'qualified'); assert.equal(passive.artifactStatus, 'verified');
-      assert.equal(run.qualification.checks.length, 6);
+      assert.equal(run.qualification.checks.length, 10);
       const stages = run.qualification.checks.map(c => c.stage);
-      assert.deepEqual(stages, ['base-boundary', 'base-regression', 'draft-boundary', 'draft-regression', 'vitest', 'lint']);
+      assert.deepEqual(stages, ['base-boundary', 'runner-probe', 'base-regression', 'candidate-base-boundary', 'candidate-base-regression',
+        'draft-boundary', 'draft-regression', 'draft-candidate', 'vitest', 'lint']);
       const patch = JSON.parse(await readFile(join(input.directory, 'qualification/patch.json'), 'utf8'));
       assert.equal(patch.complete, true);
       assert.equal(Buffer.from(patch.changes.find(c => c.path.endsWith('normalize-address.test.ts')).after.contentBase64, 'base64').toString(), draftTest);
       assert.equal(patch.changes.find(c => c.path.endsWith('normalize-address.test.ts')).before, null);
+      assert.equal(await readFile(join(input.directory, 'qualification/candidate-base/lib/__tests__/normalize-address.test.ts'), 'utf8'), draftTest);
+      assert.equal(await readFile(join(input.directory, 'qualification/candidate-base/convex/syncHelpers.ts'), 'utf8'),
+        await readFile(join(input.directory, 'qualification/base/convex/syncHelpers.ts'), 'utf8'));
+      assert.equal(run.qualification.reviewReady, false);
+      assert.ok(run.qualification.checks.filter(c => c.report).every(c => c.output.includes('Controlled framework banner')));
+      assert.equal(run.qualification.runtime.vitest, '4.0.17');
       await assert.rejects(qualifier.start({ ...input, run, dependencyRun, saveQualification() {} }), { code: 'QUALIFICATION_EXISTS' });
       await writeFile(join(run.workspace.intent.worktree, 'late.mjs'), 'late source');
       assert.equal((await qualifier.inspect({ directory: input.directory, run, dependencyRun })).artifactStatus, 'invalid');

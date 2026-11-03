@@ -5,7 +5,7 @@ import { privateRoot, snapshot, sourceFingerprint } from './containment-files.mj
 import { validateWorkspace, verifyCaptured, fail } from './qualification-artifacts.mjs';
 const sources = new WeakMap();
 export async function qualificationSource({ directory, run, capture, variant }) {
-  if (!['base', 'draft'].includes(variant)) fail('QUALIFICATION_SOURCE_INVALID');
+  if (!['base', 'candidate-base', 'draft'].includes(variant)) fail('QUALIFICATION_SOURCE_INVALID');
   await validateWorkspace(directory, run);
   await verifyCaptured(directory, run, capture);
   const token = Object.freeze({});
@@ -18,7 +18,8 @@ export async function snapshotQualificationSource(token, worktree, destination) 
   await validateWorkspace(record.directory, record.run);
   await verifyCaptured(record.directory, record.run, record.capture);
   const source = join(record.directory, 'qualification', record.variant);
-  const expected = record.variant === 'base' ? record.capture.baseSourceDigest : record.capture.sourceDigest;
+  const expected = record.variant === 'base' ? record.capture.baseSourceDigest
+    : record.variant === 'candidate-base' ? record.capture.candidateBase?.sourceDigest : record.capture.sourceDigest;
   if (await sourceFingerprint(source) !== expected) fail('QUALIFICATION_SOURCE_INVALID');
   const root = await privateRoot(source);
   try {

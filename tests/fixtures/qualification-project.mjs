@@ -25,51 +25,31 @@ export const draftTest = `import { test, expect } from 'vitest';
 import { normalizeAddress } from '../../convex/syncHelpers.ts';
 test('retains a unit after canonicalizing whitespace', () => expect(normalizeAddress('100 Main Street # 2')).toBe('100 MAIN ST 2'));
 `;
+export function candidateTest(scenario) {
+  const assertion = "expect(normalizeAddress('100 Main Street # 2')).toBe('100 MAIN ST 2')";
+  if (scenario === 'candidate-tautology') return draftTest.replace(assertion, 'expect(1).toBe(1)');
+  if (scenario === 'candidate-unrelated') return draftTest.replace("toBe('100 MAIN ST 2')", "toBe('unrelated output')");
+  if (scenario === 'candidate-empty') return draftTest.replace(assertion, '{}');
+  if (scenario === 'candidate-skipped') return draftTest.replace("test('", "test.skip('");
+  if (scenario === 'candidate-crash') return draftTest + "throw new Error('candidate crashed');\n";
+  if (scenario === 'candidate-missing') return "import 'nonexistent-dependency';\n" + draftTest;
+  if (scenario === 'candidate-mixed-empty') return draftTest + "test('empty companion', () => {});\n";
+  if (scenario === 'candidate-valid-literal') return draftTest + "test('extra literal is not a source-string veto', () => expect(1).toBe(1));\n";
+  return draftTest;
+}
 export async function qualificationProject(root, scenario) {
   const fixture = await dependencyFixture(root, { copyToolchain: true });
   const repo = fixture.repositoryPath;
   const manifest = JSON.parse(await readFile(`${repo}/package.json`, 'utf8'));
   await writeFile(`${repo}/package.json`, JSON.stringify({ ...manifest, type: 'module' }));
-  const index = `import assert from 'node:assert/strict';
-export function expect(actual) { return { toBe(expected) { assert.equal(actual, expected); } }; }
-export function test(id, run) {
-  globalThis.fixtureCases ??= [];
-  try { run(); globalThis.fixtureCases.push({id, state:'pass',errors:[]}); }
-  catch (e) { globalThis.fixtureCases.push({id,state:'fail',errors:[{name:e.name,actual:e.actual,expected:e.expected,operator:e.operator}]}); }
-}
-`;
-  const check = `import { existsSync } from 'node:fs';
-const scenario = ${JSON.stringify(scenario)};
-const selected = process.argv.includes('--config');
-if (selected && scenario === 'crash') throw new Error('Controlled check crash, not a regression.');
-if (selected && scenario === 'slow') await new Promise(r => setTimeout(r, 10000));
-if (selected) await import('/verification/selected.test.mjs');
-else {
-  await import('/work/lib/__tests__/existing.test.ts');
-  if (existsSync('/work/lib/__tests__/normalize-address.test.ts')) await import('/work/lib/__tests__/normalize-address.test.ts');
-}
-let cases = globalThis.fixtureCases ?? [];
-if (selected && scenario === 'wrong-case') cases[0].id = 'unrelated-test';
-if (selected && scenario === 'wrong-assertion') cases[0].errors[0].actual = 'unrelated';
-if (selected && scenario === 'skipped') cases[0] = {id:cases[0].id,state:'skip',errors:[]};
-if (selected && scenario === 'no-tests') cases = [];
-if (!selected && existsSync('/work/lib/__tests__/normalize-address.test.ts')) {
-  if (scenario === 'final-no-tests') cases = [];
-  if (scenario === 'final-skipped') cases = cases.map(c => ({...c,state:'skip'}));
-}
-const failed = cases.some(c => c.state === 'fail');
-process.exitCode = failed ? 1 : 0;
-if (selected && scenario === 'malformed') console.log('not a runner report');
-else console.log(JSON.stringify({protocol:'factory-vitest-selection-v1',files:selected ? ['/verification/selected.test.mjs'] :
-  ['/work/lib/__tests__/existing.test.ts', ...(existsSync('/work/lib/__tests__/normalize-address.test.ts') ? ['/work/lib/__tests__/normalize-address.test.ts'] : [])],cases,errors:selected && scenario === 'unrelated-error' ? [{name:'Error'}] : []}));
-if (!selected && scenario === 'final-vitest' && existsSync('/work/lib/__tests__/normalize-address.test.ts')) process.exitCode = 3;
-`;
+  const index = await readFile(new URL('./qualification-vitest.mjs', import.meta.url), 'utf8');
+  const check = (await readFile(new URL('./qualification-runner.mjs', import.meta.url), 'utf8')).replace('SCENARIO', JSON.stringify(scenario));
   const lint = `import { existsSync } from 'node:fs';
 console.log(JSON.stringify({fixture:true,lint:true}));
 if (${JSON.stringify(scenario)} === 'final-lint' && existsSync('/work/lib/__tests__/normalize-address.test.ts')) process.exitCode = 4;
 `;
   await writeFile(`${repo}/vendor/vitest.tgz`, tarball({
-    'package.json': JSON.stringify({ name: 'vitest', version: '1.0.0', type: 'module', exports: './dist/index.js', bin: { vitest: './vitest.mjs' } }),
+    'package.json': JSON.stringify({ name: 'vitest', version: scenario === 'unsupported-version' ? '4.0.18' : '4.0.17', type: 'module', exports: './dist/index.js', bin: { vitest: './vitest.mjs' } }),
     'vitest.mjs': check, 'dist/index.js': index,
   }));
   await writeFile(`${repo}/vendor/eslint.tgz`, tarball({

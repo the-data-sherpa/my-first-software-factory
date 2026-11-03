@@ -5,19 +5,19 @@ import { sourceFingerprint } from './containment-files.mjs';
 import { verifyDependencyBundle, inspectDependencies } from './dependencies.mjs';
 import { qualificationSource } from './qualification-source.mjs';
 import { verifyHelperScope } from './qualification-scope.mjs';
-import { SELECTION, selectedTest, selectedConfig, selectedReporter, regressionEvidence, finalVitestEvidence } from './qualification-selection.mjs';
+import { SELECTION, selectedTest, regressionEvidence, candidateEvidence, finalVitestEvidence } from './qualification-selection.mjs';
+import { reportFiles, filesDigest, parseReport, probeEvidence } from './qualification-reporting.mjs';
 import { hash, fail, same, save, json, readArtifact, validateWorkspace, captureDraft, verifyCaptured } from './qualification-artifacts.mjs';
 
 const isDrain = error => ['DRAIN_FAILED', 'MODEL_DRAIN_FAILED'].includes(error?.code);
-const selectionDigest = () => hash(selectedTest + selectedConfig + selectedReporter);
-const implementationFiles = ['qualification.mjs', 'qualification-artifacts.mjs', 'qualification-source.mjs', 'qualification-selection.mjs', 'qualification-scope.mjs',
+const implementationFiles = ['qualification.mjs', 'qualification-artifacts.mjs', 'qualification-source.mjs', 'qualification-selection.mjs', 'qualification-scope.mjs', 'qualification-reporting.mjs', 'qualification-reporter.mjs',
   'containment.mjs', 'containment-files.mjs', 'containment-namespace.mjs', 'containment-filter.mjs', 'containment-probe.mjs'];
 async function implementation() {
   return Object.fromEntries(await Promise.all(implementationFiles.map(async name => [name, hash(await readFile(new URL(name, import.meta.url)))])));
 }
 function artifactPath(directory, receipt) {
   const path = relative(directory, receipt ?? '');
-  if (!/^(?:checks|qualification\/(?:base-checks|draft-checks))\/check-[a-f0-9-]{36}\/result\.json$/.test(path)) fail('QUALIFICATION_ARTIFACT_INVALID');
+  if (!/^(?:checks|qualification\/(?:base-checks|candidate-base-checks|draft-checks))\/check-[a-f0-9-]{36}\/result\.json$/.test(path)) fail('QUALIFICATION_ARTIFACT_INVALID');
   return path;
 }
 async function checkArtifact(directory, result) {
@@ -31,9 +31,16 @@ async function checkArtifact(directory, result) {
   if (!same(await json(directory, `${checkDirectory}/launch.json`), stored.launch)
     || await sourceFingerprint(join(directory, checkDirectory, 'source')) !== stored.sourceDigest
     || (await readArtifact(directory, `${checkDirectory}/output.log`)).toString('utf8') !== output) fail('QUALIFICATION_ARTIFACT_INVALID');
-  if (stored.name === 'selected-regression') {
-    if (stored.selectionDigest !== selectionDigest()) fail('QUALIFICATION_ARTIFACT_INVALID');
-    for (const [file, expected] of [['selected.test.mjs', selectedTest], ['selection-config.mjs', selectedConfig], ['selection-reporter.mjs', selectedReporter]]) {
+  const adapters = reportFiles(stored.name, selectedTest);
+  if (adapters) {
+    if (stored.selectionDigest !== filesDigest(adapters)
+      || !same(stored.reportBinding, { id: stored.id, operation: stored.name, sourceDigest: stored.sourceDigest,
+        dependencyIntentId: stored.dependencyIntentId, selectionDigest: stored.selectionDigest })
+      || !same(await json(directory, `${checkDirectory}/binding.json`), stored.reportBinding)
+      || (await readArtifact(directory, `${checkDirectory}/report.frame`)).toString('utf8') !== stored.report
+      || Buffer.byteLength(stored.report) !== stored.reportBytes || hash(stored.report) !== stored.reportDigest
+      || stored.outputBytes !== Buffer.byteLength(output) + stored.reportBytes) fail('QUALIFICATION_ARTIFACT_INVALID');
+    for (const [file, expected] of Object.entries(adapters)) {
       if ((await readArtifact(directory, `${checkDirectory}/${file}`)).toString('utf8') !== expected) fail('QUALIFICATION_ARTIFACT_INVALID');
     }
   }
@@ -91,7 +98,16 @@ function scope(capture, descriptor) {
   if (baseDirs.some(path => !draftDirs.includes(path)) || draftDirs.some(path => !baseDirs.includes(path) && !parents.has(path))) fail('QUALIFICATION_SCOPE');
   return true;
 }
-const verdict = (run, status, reason) => ({ status, ...(reason ? { reason } : {}), runId: run.id, kind: run.admission?.kind, reviewReady: false });
+const verdict = (run, status, reason) => ({ status, ...(reason ? { reason } : {}), runId: run.id, kind: run.admission?.kind,
+  reviewReady: status === 'qualified' && run.admission?.kind === 'owner' });
+const stages = ['base-boundary', 'runner-probe', 'base-regression', 'candidate-base-boundary', 'candidate-base-regression',
+  'draft-boundary', 'draft-regression', 'draft-candidate', 'vitest', 'lint'];
+function runtimeEvidence(result, dependencyRun, expected) {
+  const runtime = result.name === 'runner-probe' ? probeEvidence(result) : parseReport(result).runtime;
+  const manifest = dependencyRun.dependencies.receipt.inventory.find(e => e.path === 'node_modules/vitest/package.json');
+  if (runtime.manifestDigest !== manifest?.sha256 || (expected && !same(runtime, expected))) fail('QUALIFICATION_RUNNER_UNSUPPORTED');
+  return runtime;
+}
 
 /** Trusted in-process composition seam. verifyDraft is never a JSON field or tool.
  * The parent closes the live executor only AFTER qualification closes. No model role.
@@ -143,12 +159,10 @@ export function createDraftQualification({ verifyDraft } = {}) {
             let bundle = await prerequisites(directory, run, dependencyRun, descriptor);
             if (descriptor.draft.sourceDigest !== capture.sourceDigest || capture.baseSourceDigest !== descriptor.admissionBinding.sourceDigest) fail('QUALIFICATION_SOURCE_CHANGED');
             if (!scope(capture, descriptor)) outcome = verdict(run, 'no-change', 'NO_CHANGE');
-            // No real distribution has been exercised in this implementation authorization.
-            else if (descriptor.kind !== 'controlled-fixture') fail('QUALIFICATION_RUNNER_UNSUPPORTED');
             else {
               await verifyHelperScope(directory);
               const reservations = new Map();
-              for (const name of ['base-boundary', 'base-regression', 'draft-boundary', 'draft-regression', 'vitest', 'lint']) {
+              for (const name of stages) {
                 active(); reservations.set(name, budget.reserveToolRound({ roundId: `qualification:${name}` }));
               }
               const check = async (name, operation) => {
@@ -161,7 +175,8 @@ export function createDraftQualification({ verifyDraft } = {}) {
                 await checkArtifact(directory, result);
                 return result;
               };
-              for (const variant of ['base', 'draft']) {
+              let candidateBase; let candidateDraft; let runtime;
+              for (const variant of ['base', 'candidate-base', 'draft']) {
                 active();
                 bundle = await prerequisites(directory, run, dependencyRun, descriptor);
                 const verificationSource = await qualificationSource({ directory, run, capture, variant });
@@ -172,13 +187,22 @@ export function createDraftQualification({ verifyDraft } = {}) {
                     dependencyBundle: bundle, verificationSource, signal: combined });
                   return tools.verification;
                 });
-                const regression = await check(`${variant}-regression`, () => tools.check('selected-regression'));
-                regressionEvidence(regression, variant);
+                if (variant === 'base') {
+                  runtime = runtimeEvidence(await check('runner-probe', () => tools.check('runner-probe')), dependencyRun);
+                  await persist({ runtime });
+                }
+                const regression = await check(`${variant}-regression`, () => tools.check(variant === 'candidate-base' ? 'candidate-regression' : 'selected-regression'));
+                runtimeEvidence(regression, dependencyRun, runtime);
+                if (variant === 'candidate-base') { candidateBase = regression; candidateEvidence(candidateBase); }
+                else regressionEvidence(regression, variant);
                 if (variant === 'draft') {
+                  candidateDraft = await check('draft-candidate', () => tools.check('candidate-regression'));
+                  runtimeEvidence(candidateDraft, dependencyRun, runtime);
+                  candidateEvidence(candidateBase, candidateDraft);
                   for (const name of ['vitest', 'lint']) {
-                    const result = await check(name, () => tools.check(name));
+                    const result = await check(name, () => tools.check(name === 'vitest' ? 'qualification-vitest' : name));
                     if (!result.passed || result.exitCode !== 0 || result.exitSignal !== null || result.reason !== 'passed') fail(`FINAL_${name.toUpperCase()}_FAILED`);
-                    if (name === 'vitest') finalVitestEvidence(result);
+                    if (name === 'vitest') { finalVitestEvidence(result, candidateDraft); runtimeEvidence(result, dependencyRun, runtime); }
                   }
                 }
                 await drain(); tools = undefined;
@@ -197,10 +221,31 @@ export function createDraftQualification({ verifyDraft } = {}) {
             : reason === 'RUN_DEADLINE' ? 'failed' : 'blocked', reason);
         } finally {
           try { await drain(); } catch (error) { drainFailure = error; outcome = verdict(run, 'interrupted', error.code); }
-          clearTimeout(timer);
         }
-        try { await persist({ stage: 'complete', status: outcome.status, verdict: outcome }); }
-        finally { settled = true; if (drainFailure) throw drainFailure; }
+        const finalFreshness = async () => {
+          try {
+            active(); await verifyCaptured(directory, run, state.capture);
+            await prerequisites(directory, run, dependencyRun, state.descriptor);
+            if (!same(await verifyDraft({ runId: run.id, kind: run.admission.kind }), state.descriptor)
+              || !same(await implementation(), state.implementation)) fail('QUALIFICATION_INVALIDATED');
+            active();
+          } catch (error) { outcome = verdict(run, error.code === 'RUN_STOPPING' ? 'stopped'
+            : error.code === 'RUN_DEADLINE' ? 'failed' : 'blocked', error.code ?? 'QUALIFICATION_FAILED'); }
+        };
+        try {
+          if (outcome.status === 'qualified') await finalFreshness();
+          await persist({ stage: 'complete', status: outcome.status, verdict: outcome, reviewReady: outcome.reviewReady });
+          if (outcome.status === 'qualified') {
+            await finalFreshness();
+            if (outcome.status !== 'qualified') await persist({ status: outcome.status, verdict: outcome, reviewReady: false });
+          }
+        } catch (error) {
+          // Never leave a successfully inspectable verdict after publication of the
+          // private projection failed. A failed drain still has precedence.
+          outcome = verdict(run, drainFailure ? 'interrupted' : 'failed', drainFailure?.code ?? 'QUALIFICATION_PERSIST_FAILED');
+          try { await persist({ stage: 'complete', status: outcome.status, verdict: outcome, reviewReady: false }); } catch { /* Retain the original reporting error. */ }
+          throw error;
+        } finally { clearTimeout(timer); settled = true; if (drainFailure) throw drainFailure; }
         return { ...outcome, artifacts: structuredClone(state.artifacts) };
       })();
       finished.catch(() => {});
@@ -223,15 +268,21 @@ export function createDraftQualification({ verifyDraft } = {}) {
           if (!same(state.selection, SELECTION) || !same(state.implementation, await implementation())) fail('QUALIFICATION_INVALIDATED');
           for (const { stage, ...check } of state.checks) {
             await checkArtifact(directory, check);
-            if (check.sourceDigest !== (stage.startsWith('base-') ? state.capture.baseSourceDigest : state.capture.sourceDigest)
+            if (check.sourceDigest !== (stage.startsWith('base-') || stage === 'runner-probe' ? state.capture.baseSourceDigest
+              : stage.startsWith('candidate-base-') ? state.capture.candidateBase?.sourceDigest : state.capture.sourceDigest)
               || check.dependencyIntentId !== state.descriptor.admissionBinding.executionProfile.dependencyIntentId) fail('QUALIFICATION_INVALIDATED');
           }
           if (state.verdict?.status === 'qualified') {
-            if (state.kind !== 'controlled-fixture' || state.verdict.reviewReady !== false || !scope(state.capture, state.descriptor)
-              || !same(state.checks.map(c => c.stage), ['base-boundary', 'base-regression', 'draft-boundary', 'draft-regression', 'vitest', 'lint'])) fail('QUALIFICATION_INVALIDATED');
+            if (state.verdict.reviewReady !== (state.kind === 'owner') || !scope(state.capture, state.descriptor)
+              || !same(state.checks.map(c => c.stage), stages)) fail('QUALIFICATION_INVALIDATED');
             await verifyHelperScope(directory);
-            regressionEvidence(state.checks[1], 'base'); regressionEvidence(state.checks[3], 'draft'); finalVitestEvidence(state.checks[4]);
-            for (const index of [0, 2, 4, 5]) if (!state.checks[index].passed || state.checks[index].reason !== 'passed') fail('QUALIFICATION_INVALIDATED');
+            const checks = Object.fromEntries(state.checks.map(c => [c.stage, c]));
+            for (const check of state.checks.filter(c => reportFiles(c.name, selectedTest))) runtimeEvidence(check, dependencyRun, state.runtime);
+            regressionEvidence(checks['base-regression'], 'base'); regressionEvidence(checks['draft-regression'], 'draft');
+            candidateEvidence(checks['candidate-base-regression'], checks['draft-candidate']); finalVitestEvidence(checks.vitest, checks['draft-candidate']);
+            for (const stage of ['base-boundary', 'candidate-base-boundary', 'draft-boundary', 'vitest', 'lint']) {
+              if (!checks[stage].passed || checks[stage].reason !== 'passed') fail('QUALIFICATION_INVALIDATED');
+            }
           }
         }
         // A missing final record remains interrupted; inspection never finishes a run.

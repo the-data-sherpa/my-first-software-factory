@@ -12,7 +12,8 @@ import { promisify } from 'node:util';
 import { dependencyMount } from './dependencies.mjs';
 import { namespaceLifetime, namespaceFenced, processIdentity as identity } from './containment-namespace.mjs';
 import { snapshotQualificationSource } from './qualification-source.mjs';
-import { selectedTest, selectedConfig, selectedReporter } from './qualification-selection.mjs';
+import { selectedTest } from './qualification-selection.mjs';
+import { reportOperations, reportFiles, filesDigest } from './qualification-reporting.mjs';
 import { createHash } from 'node:crypto';
 
 const exec = promisify(execFile);
@@ -158,7 +159,7 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
     available();
     if (combined(checkSignal).aborted) fail('ABORTED', 'The check was cancelled before launch.');
     if (activeCheck) fail('CHECK_BUSY', 'Only one contained check can run at once.');
-    if (!['boundary', ...(dependencyBundle ? ['vitest', 'lint', ...(verificationSource ? ['selected-regression'] : [])] : []), ...(fixture ? ['pass', 'fail', 'signal', 'output', 'hang', 'descendants', 'startup-stop', ...(envelope.diagnostic ? ['pids', 'scratch', 'memory'] : [])] : [])].includes(name)) {
+    if (!['boundary', ...(dependencyBundle ? ['vitest', 'lint', ...(verificationSource ? reportOperations : [])] : []), ...(fixture ? ['pass', 'fail', 'signal', 'output', 'hang', 'descendants', 'startup-stop', ...(envelope.diagnostic ? ['pids', 'scratch', 'memory'] : [])] : [])].includes(name)) {
       if (name === 'vitest' || name === 'lint') fail('DEPENDENCIES_NOT_PREPARED', 'Prepare and verify the private read-only dependency/toolchain bundle before repository checks.');
       fail('CHECK_NOT_ALLOWED', 'Choose a factory-defined check; arbitrary commands and arguments are not accepted.');
     }
@@ -178,19 +179,19 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
         const sourceDigest = verificationSource
           ? await snapshotQualificationSource(verificationSource, worktree, `${directory}/source`)
           : await snapshot(root, `${directory}/source`, protectedPaths);
-        const selectionDigest = name === 'selected-regression'
-          ? createHash('sha256').update(selectedTest + selectedConfig + selectedReporter).digest('hex') : undefined;
-        if (selectionDigest) {
-          await durableFile(`${directory}/selected.test.mjs`, selectedTest);
-          await durableFile(`${directory}/selection-config.mjs`, selectedConfig);
-          await durableFile(`${directory}/selection-reporter.mjs`, selectedReporter);
+        const adapters = reportFiles(name, selectedTest);
+        const selectionDigest = adapters ? filesDigest(adapters) : undefined;
+        const reportBinding = adapters ? { id, operation: name, sourceDigest, dependencyIntentId: bundle.intentId, selectionDigest } : undefined;
+        if (adapters) {
+          for (const [file, content] of Object.entries(adapters)) await durableFile(`${directory}/${file}`, content);
+          await durableFile(`${directory}/binding.json`, JSON.stringify(reportBinding));
         }
         if (bundle) await mkdir(`${directory}/source/node_modules`, { mode: 0o700 });
         await durableFile(`${directory}/filter.bpf`, containmentFilter());
         const mountDirectory = await realpath(directory);
         probes = name === 'boundary' ? await hostProbes(`/proc/${process.pid}/fd/${retained.fd}/${id}`) : undefined;
         await durableFile(`${directory}/input.json`, JSON.stringify({ ...probes?.input, scratchBytes: limits.scratchBytes, dependencyBundle: Boolean(bundle) }));
-        const started = { id, kind: ['vitest', 'lint', 'selected-regression'].includes(name) ? 'repository' : 'diagnostic', name, backendPid: process.pid, sourceDigest, selectionDigest,
+        const started = { id, kind: ['vitest', 'lint', ...reportOperations].includes(name) ? 'repository' : 'diagnostic', name, backendPid: process.pid, sourceDigest, selectionDigest, reportBinding,
           dependencyIntentId: bundle?.intentId,
           startedAt: new Date().toISOString(), envelope: observedEnvelope, limits };
         await durableFile(`${directory}/started.json`, JSON.stringify(started));
@@ -201,9 +202,9 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
           '--setenv', 'PATH', '/runtime', '--setenv', 'HOME', '/tmp', '--setenv', 'TMPDIR', '/tmp', '--setenv', 'LANG', 'C.UTF-8',
           '--setenv', 'NODE_ENV', 'test', '--setenv', 'UV_THREADPOOL_SIZE', '2',
           '--ro-bind', await realpath(process.execPath), '/runtime/node'];
-        if (selectionDigest) args.push('--ro-bind', `${mountDirectory}/selected.test.mjs`, '/verification/selected.test.mjs',
-          '--ro-bind', `${mountDirectory}/selection-config.mjs`, '/verification/config.mjs',
-          '--ro-bind', `${mountDirectory}/selection-reporter.mjs`, '/verification/reporter.mjs');
+        if (adapters) for (const file of [...Object.keys(adapters), 'binding.json']) {
+          args.push('--ro-bind', `${mountDirectory}/${file}`, `/verification/${file}`);
+        }
         if (envelope.diagnostic) args.push('--ro-bind', '/usr/bin/sleep', '/runtime/sleep');
         for (const library of libraries) args.push('--ro-bind', await realpath(`/usr/lib/${library}`), `/usr/lib/${library}`);
         args.push('--symlink', 'usr/lib', '/lib64', '--symlink', 'usr/lib', '/lib',
@@ -211,27 +212,36 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
           '--ro-bind', `${mountDirectory}/input.json`, '/input.json', '--proc', '/proc', '--remount-ro', '/proc',
           '--dev', '/dev', '--remount-ro', '/dev', '--size', String(limits.scratchBytes), '--tmpfs', '/tmp',
           '--remount-ro', '/', '--chdir', '/work', '--seccomp', '3', '--block-fd', '4', '--info-fd', '5', '--', '/runtime/node',
-          ...(name === 'selected-regression' ? ['/work/node_modules/vitest/vitest.mjs', 'run', '--maxWorkers=2', '--minWorkers=1',
-            '--config', '/verification/config.mjs', '--reporter', '/verification/reporter.mjs']
+          ...(adapters ? ['/work/node_modules/vitest/vitest.mjs', 'run', '--maxWorkers=2', '--no-file-parallelism', '--configLoader=runner', '--no-cache',
+            '--no-watch', '--retry=0', '--no-allowOnly', '--no-passWithNoTests',
+            ...(adapters['config.mjs'] ? ['--config', '/verification/config.mjs'] : []), '--reporter', '/verification/reporter.mjs']
             : name === 'vitest' ? ['/work/node_modules/vitest/vitest.mjs', 'run', '--maxWorkers=2', '--minWorkers=1']
             : name === 'lint' ? ['/work/node_modules/eslint/bin/eslint.js', '.', '--no-cache'] : ['/probe.mjs', name]));
         const eventsBefore = await resourceEvents(envelope);
-        let launch; let length = 0; const output = [];
-        child = spawn('/usr/bin/bwrap', args, { env: {}, stdio: ['ignore', 'pipe', 'pipe', filter.fd, 'pipe', 'pipe'] });
+        let launch; let length = 0; let reportLength = 0; const output = []; const reports = [];
+        child = spawn('/usr/bin/bwrap', args, { env: {}, stdio: ['ignore', 'pipe', 'pipe', filter.fd, 'pipe', 'pipe', ...(adapters ? ['pipe'] : [])] });
         lifetime = namespaceLifetime(child, envelope, 5, limits.checkMs);
         child.on('error', () => stop('launcher-error'));
-        const collect = (data) => {
-          const keep = Math.min(data.length, limits.outputBytes - length);
+        const collect = (data, report = false) => {
+          const keep = Math.max(0, Math.min(data.length, limits.outputBytes - length, report ? 256 * 1024 + 8 - reportLength : Infinity));
           if (keep > 0) {
             const retained = data.subarray(0, keep);
-            output.push(retained); length += keep;
-            try {
-              for (let written = 0; written < keep;) written += writeSync(log.fd, retained, written, keep - written);
-            } catch { stop('receipt-write'); }
+            length += keep;
+            if (report) { reports.push(retained); reportLength += keep; }
+            else {
+              output.push(retained);
+              try {
+                for (let written = 0; written < keep;) written += writeSync(log.fd, retained, written, keep - written);
+              } catch { stop('receipt-write'); }
+            }
           }
           if (keep < data.length) stop('output-limit');
         };
-        child.stdout.on('data', collect); child.stderr.on('data', collect);
+        child.stdout.on('data', data => collect(data)); child.stderr.on('data', data => collect(data));
+        if (adapters) {
+          child.stdio[6].on('data', data => collect(data, true));
+          child.stdio[6].on('error', () => stop('report-channel'));
+        }
         child.stdio[4].on('error', () => stop('launcher-error'));
         timer = setTimeout(() => stop('timeout'), limits.checkMs);
         abortSignal.addEventListener('abort', abort, { once: true });
@@ -256,11 +266,14 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
         if (events.oomKill > 0 || events.memoryMax > 0) reason ??= 'memory-limit';
         if (fixture && name === 'scratch' && exitCode === 73) reason ??= 'scratch-limit';
         const bytes = Buffer.concat(output);
+        const report = adapters ? Buffer.concat(reports).toString('utf8') : undefined;
+        if (adapters) await durableFile(`${directory}/report.frame`, report);
         await log.sync();
         const result = { ...started, finishedAt: new Date().toISOString(), launch, exitCode, exitSignal,
           passed: !reason && exitCode === 0 && exitSignal === null,
           reason: reason ?? (exitSignal ? 'signal' : exitCode === 0 ? 'passed' : 'exit'),
-          outputBytes: length, resourceEvents: events, hostConnections: probes?.connections(), receipt: join(receiptDirectory, id, 'result.json'), reviewReady: false };
+          outputBytes: length, ...(adapters ? { report, reportBytes: reportLength,
+            reportDigest: createHash('sha256').update(report).digest('hex') } : {}), resourceEvents: events, hostConnections: probes?.connections(), receipt: join(receiptDirectory, id, 'result.json'), reviewReady: false };
         if (name === 'boundary' && result.passed) {
           try {
             result.probe = JSON.parse(bytes.toString('utf8'));
