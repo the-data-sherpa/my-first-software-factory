@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 
 const fixture = process.argv[2] === 'fixture';
+const registry = process.argv[2] === 'registry';
 const tcp = await new Promise((resolve) => {
   const socket = createConnection({ host: '127.0.0.1', port: 9 });
   socket.on('error', (error) => resolve(error.code)); socket.on('connect', () => { socket.destroy(); resolve('connected'); });
@@ -29,8 +30,9 @@ const boundary = { tcp, udp, inputReadOnly, privatePathsHidden, environmentScrub
 if (tcp !== 'EPERM' || udp !== 'EPERM' || !inputReadOnly || !privatePathsHidden || !environmentScrubbed
   || scratchBytes !== 268435456 || !noNewPrivileges || !seccomp) process.exit(1);
 await mkdir('/tmp/home'); await cp('/input', '/tmp/work', { recursive: true });
+if (registry) await cp('/locked-cache', '/tmp/cache', { recursive: true });
 const install = (args) => {
-  const child = spawnSync('/runtime/bun', ['install', '--no-cache', '--backend=copyfile', ...args], {
+  const child = spawnSync('/runtime/bun', ['install', ...(registry ? [] : ['--no-cache']), '--backend=copyfile', ...args], {
     cwd: '/tmp/work', env: { HOME: '/tmp/home', PATH: '/runtime:/bin', TMPDIR: '/tmp', LANG: 'C.UTF-8', BUN_INSTALL_CACHE_DIR: '/tmp/cache' },
     encoding: 'utf8', maxBuffer: 1024 * 1024, timeout: 100_000,
   });

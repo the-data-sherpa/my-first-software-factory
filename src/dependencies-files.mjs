@@ -41,10 +41,26 @@ export function safePath(path) {
   return path;
 }
 
+// Reject duplicate object keys before either Bun or Node can interpret ambiguous inputs differently.
+export function parseDependencyJSON(bytes) {
+  const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  const stack = [];
+  for (const match of text.matchAll(/"(?:\\.|[^"\\])*"|[{}\[\]]/g)) {
+    const token = match[0];
+    if (token === '{' || token === '[') stack.push(token === '{' ? new Set() : null);
+    else if (token === '}' || token === ']') stack.pop();
+    else if (/^\s*:/.test(text.slice(match.index + token.length))) {
+      const keys = stack.at(-1); const key = JSON.parse(token);
+      if (!keys || keys.has(key)) unsafe(); keys.add(key);
+    }
+  }
+  return JSON.parse(text);
+}
+
 // Narrow ustar admission: no links, devices, pax extensions, credentials, or path escapes.
-export function archiveManifest(archive) {
+export function archiveEntries(archive) {
   const tar = gunzipSync(archive, { maxOutputLength: 32 * 1024 ** 2 });
-  const seen = new Set(); let manifest; let ended = false;
+  const seen = new Map(); const files = []; let manifest; let ended = false;
   for (let offset = 0; offset + 512 <= tar.length;) {
     const header = tar.subarray(offset, offset + 512); offset += 512;
     if (header.every((byte) => byte === 0)) { if (tar.subarray(offset).some((byte) => byte !== 0)) unsafe(); ended = true; break; }
@@ -52,6 +68,8 @@ export function archiveManifest(archive) {
     const sizeText = text(124, 136).trim();
     if (!/^[0-7]+$/.test(sizeText)) unsafe();
     const size = parseInt(sizeText, 8); const type = text(156, 157);
+    if (text(257, 263) !== 'ustar' || text(263, 265) !== '00' || text(157, 257)
+      || !/^[0-7]+$/.test(text(100, 108).trim()) || parseInt(text(100, 108).trim(), 8) > 0o777) unsafe();
     let name = text(0, 100); const prefix = text(345, 500);
     if (prefix) name = `${prefix}/${name}`;
     if (type === '5') name = name.replace(/\/$/, '');
@@ -60,12 +78,24 @@ export function archiveManifest(archive) {
       || (type === '5' && size !== 0) || size > 8 * 1024 ** 2 || offset + size > tar.length) unsafe();
     let checksum = 0; for (let index = 0; index < 512; index++) checksum += index >= 148 && index < 156 ? 32 : header[index];
     if (parseInt(text(148, 156).trim(), 8) !== checksum) unsafe();
-    seen.add(name);
-    if (name === 'package/package.json') manifest = JSON.parse(tar.subarray(offset, offset + size).toString('utf8'));
+    seen.set(name, type === '5' ? 'directory' : 'file');
+    if (seen.size > 20000 || (name === 'package' && type !== '5')) unsafe();
+    const data = tar.subarray(offset, offset + size);
+    if (name === 'package/package.json' && type !== '5') manifest = parseDependencyJSON(data);
+    if (name !== 'package') files.push({ path: name.slice(8), type: type === '5' ? 'directory' : 'file',
+      executable: Boolean(parseInt(text(100, 108).trim(), 8) & 0o111), data });
     offset += Math.ceil(size / 512) * 512;
   }
-  if (!ended || !manifest || seen.size > 20000) unsafe();
-  // Nested graphs, build hooks and file/link/git references are deliberately unsupported.
+  if (!ended || !manifest || typeof manifest !== 'object' || Array.isArray(manifest)) unsafe();
+  for (const name of seen.keys()) {
+    let parent = posix.dirname(name);
+    while (parent !== '.') { if (seen.has(parent) && seen.get(parent) !== 'directory') unsafe(); parent = posix.dirname(parent); }
+  }
+  return { manifest, files };
+}
+export function archiveManifest(archive) {
+  const { manifest } = archiveEntries(archive);
+  // The original committed-tarball mode remains direct-only.
   for (const key of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies', 'workspaces', 'patchedDependencies', 'overrides', 'resolutions', 'publishConfig', 'config', '_auth', '_authToken']) {
     if (manifest[key] && Object.keys(manifest[key]).length) unsafe();
   }

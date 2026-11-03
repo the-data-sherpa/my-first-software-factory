@@ -10,7 +10,7 @@ const worker = fileURLToPath(new URL('./dependencies-worker.mjs', import.meta.ur
 const error = (code) => Object.assign(new Error('Private dependency preparation failed.'), { code });
 
 // Internal host helper. Fixture mode is reachable only from the fixed disposable diagnostic.
-export async function runPreparationSandbox({ inputDirectory, bunPath, receiptDirectory, signal, fixture = false }) {
+export async function runPreparationSandbox({ inputDirectory, cacheDirectory, bunPath, receiptDirectory, signal, fixture = false }) {
   const envelope = await verifyContainmentEnvelope();
   if (signal?.aborted) throw error('DEPENDENCIES_ABORTED');
   const filterPath = `${receiptDirectory}/filter.bpf`;
@@ -31,11 +31,12 @@ export async function runPreparationSandbox({ inputDirectory, bunPath, receiptDi
       for (const library of ['libreadline.so.8', 'libncursesw.so.6']) args.push('--ro-bind', await realpath(`/usr/lib/${library}`), `/usr/lib/${library}`);
     }
     for (const library of libraries) args.push('--ro-bind', await realpath(`/usr/lib/${library}`), `/usr/lib/${library}`);
+    if (cacheDirectory) args.push('--ro-bind', cacheDirectory, '/locked-cache');
     args.push('--symlink', 'usr/lib', '/lib64', '--symlink', 'usr/lib', '/lib',
       '--ro-bind', inputDirectory, '/input', '--ro-bind', worker, '/prepare.mjs', '--proc', '/proc', '--remount-ro', '/proc',
       '--dev', '/dev', '--remount-ro', '/dev', '--size', String(CONTAINMENT_LIMITS.scratchBytes), '--tmpfs', '/tmp',
       '--remount-ro', '/', '--chdir', '/tmp', '--seccomp', '3', '--block-fd', '4', '--',
-      '/runtime/node', '/prepare.mjs', ...(fixture ? ['fixture'] : []));
+      '/runtime/node', '/prepare.mjs', ...(fixture ? ['fixture'] : cacheDirectory ? ['registry'] : []));
     const events = async () => {
       const values = await Promise.all(['memory.events', 'pids.events'].map((name) => readFile(`/sys/fs/cgroup${envelope.cgroup}/${name}`, 'utf8')));
       return values.join('\n');
