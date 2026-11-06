@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, chmod, readdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, chmod, readdir, writeFile, readFile, cp, mkdir, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
@@ -21,11 +21,21 @@ async function cleanup(root) {
   }
   await writable(root); await rm(root, { recursive: true, force: true });
 }
-for (const scenario of ['draft', 'cli-draft', 'cli-refusal', 'cli-stop', 'cli-check-output-limit', 'cli-pagination', 'no-change', 'drain-report']) {
+for (const scenario of ['draft', 'cli-draft', 'cli-refusal', 'cli-stop', 'cli-check-output-limit', 'cli-pagination', 'no-change', 'drain-report', 'policy-change', 'policy-startup', 'policy-missing']) {
   test(`repository executor application and CLI: ${scenario}`, async t => {
     const root = await mkdtemp('/tmp/factory-dependencies-'); let drained = false;
     try {
-      const result = await runOwnedScope(t, [fileURLToPath(new URL('./executor-application-worker.mjs', import.meta.url)), root, scenario]);
+      let worker = fileURLToPath(new URL('./executor-application-worker.mjs', import.meta.url));
+      if (scenario.startsWith('policy-')) {
+        // Mutate only a disposable runtime input, never this checkout's policy.
+        const runtime = join(root, 'runtime');
+        for (const name of ['src', 'bin', 'tests']) await cp(new URL(`../../${name}`, import.meta.url), join(runtime, name), { recursive: true });
+        await mkdir(join(runtime, 'docs', 'agents'), { recursive: true });
+        await cp(new URL('../../docs/agents/change-quality.md', import.meta.url), join(runtime, 'docs', 'agents', 'change-quality.md'));
+        await symlink(fileURLToPath(new URL('../../node_modules', import.meta.url)), join(runtime, 'node_modules'));
+        worker = join(runtime, 'tests', 'phase-1', 'executor-application-worker.mjs');
+      }
+      const result = await runOwnedScope(t, [worker, root, scenario]);
       drained = true;
       assert.equal(result.code, 0, result.stderr);
       if (process.env.FACTORY_EXECUTOR_APPLICATION_EVIDENCE) await writeFile(`${process.env.FACTORY_EXECUTOR_APPLICATION_EVIDENCE}/${scenario}.json`, result.stdout, { mode: 0o600 });

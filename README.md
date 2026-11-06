@@ -9,7 +9,7 @@ The factory's job is repository maintenance, starting with [`vanguard`](https://
 Terms used in this plan are defined in [CONTEXT.md](CONTEXT.md). [ADR 0002](docs/adr/0002-one-factory-many-projects.md) records the owner's choice of one factory managing multiple projects, not a factory per project. Each run and work item belongs to one project.
 
 The executor and development reviewers use one [change quality standard](docs/agents/change-quality.md).
-Executor evidence retains the policy snapshot used for model instructions, available through existing inspection.
+Executor evidence retains the policy snapshot prepared for model instructions, available through existing inspection.
 [Review guidance](docs/agents/review.md) separates findings from unexamined evidence and owner decisions.
 See the [options and implementation record](docs/implementation/quality-guidance.md) for the selected approach and its verification limits.
 This adds guidance, not another workflow or permission to publish.

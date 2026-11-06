@@ -38,7 +38,10 @@ export function createRepositoryExecution(options = {}) {
       budget.assertActive();
       // Snapshot factory-owned guidance once. Target files and global skills cannot
       // replace it, and passive inspection reads the retained intent instead.
-      const qualityText = await readFile(new URL('../docs/agents/change-quality.md', import.meta.url), 'utf8');
+      const qualityText = await readFile(new URL('../docs/agents/change-quality.md', import.meta.url), 'utf8').catch(() => {
+        throw new FactoryError('EXECUTOR_POLICY_UNAVAILABLE',
+          'The factory quality policy cannot be read. No model or tool work was started. Restore the policy before a new run.');
+      });
       const qualityPolicy = { source: 'docs/agents/change-quality.md', sha256: digest(qualityText), text: qualityText };
       budget.assertActive();
       const shutdown = new AbortController();
@@ -100,6 +103,9 @@ export function createRepositoryExecution(options = {}) {
           authority = await consumeAdmissionHandoff(await admitted.handoff(), { runId, kind });
           const activation = await verifyActivatedAdmission(authority);
           binding = activation.binding;
+          if (qualityPolicy.sha256 !== binding.executionProfile.implementation['../docs/agents/change-quality.md']) {
+            throw failure('ADMISSION_INVALIDATED');
+          }
           await verify();
           save({ stage: 'executor', admissionBinding: binding });
           tools = await createExecutorTools({ input, dependencyBundle: activation.dependencyBundle, scope,

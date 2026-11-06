@@ -42,11 +42,21 @@ The root `AGENTS.md` points maintainers to it before implementation or review.
 These are repository documents, not a replacement global skill catalog.
 
 The repository executor reads the shared policy from a fixed factory-owned path when starting execution.
-It snapshots the text once and includes that same text in its model instructions.
+It snapshots the text once and prepares that same text for its model instructions.
 The existing intent artifact retains the source path, SHA-256 digest, and full text.
+Intent is not proof of dispatch. Admission can refuse a run before the executor sends any model request.
 Existing paginated application and CLI inspection expose that snapshot without loading a model or rereading the current policy.
-The digest is provenance, not an authority token or a readiness check.
-Earlier artifacts without the additional field remain inspectable.
+The retained digest is provenance, not an authority token or a readiness check.
+
+The execution profile also fingerprints the policy file through its existing implementation map.
+Before enabling executor tools, the executor compares its snapshot digest with the admitted policy digest.
+A mismatch fails with `ADMISSION_INVALIDATED`. Later policy changes invalidate live execution through the existing profile checks.
+This preserves the original profile invariant without a storage-schema change.
+Earlier artifacts remain inspectable, but earlier admission-only profiles can become invalid under passive freshness checks.
+Executor baseline evidence remains historical. Inspection does not replay execution or establish current readiness.
+
+An unreadable policy fails startup with `EXECUTOR_POLICY_UNAVAILABLE` before model or tool dispatch.
+The application retains the blocked outcome and releases safe startup ownership through its existing failure path.
 
 The no-tool preflight does not receive the policy.
 No tool, model route, retry, deadline, budget, permission, qualification rule, or storage schema changes.
@@ -76,7 +86,7 @@ Preserve the existing assertions for tool scope, original counters, duplicate st
 
 This tests instruction delivery and retained evidence, not whether a production model follows the policy.
 Live model acceptance, real Vanguard/toolchain compatibility, and the maintenance demonstration remain separately authorized work.
-The unresolved baseline command/profile correction and executor-to-qualifier composition remain outside this change.
+The unresolved Vitest baseline-command/profile correction and executor-to-qualifier composition remain outside this change.
 
 ## Verification record
 
@@ -98,15 +108,56 @@ The existing draft cases now also test policy delivery and retention. The test c
 Private logs and scope audits are retained under `/tmp/factory-quality-guidance-evidence/`.
 These results do not establish production-model compliance with the prose or real-toolchain readiness.
 
-### Independent review blocked
+### Initial Pi review attempts
 
 Two isolated review attempts selected provider `pi` and model `anthropic/claude-opus-5-5`.
 Both failed during provider authentication before producing a review.
-The Standards and Spec axes are unexamined by Opus, not clean or approved.
-The same-route sibling task was stopped after the first failure. It had already failed with the same authentication blocker.
-No provider or model substitution occurred, and no retry loop remains active.
-The owner must renew Anthropic authentication in Pi before fresh review tasks can proceed.
-The owner confirmed that Opus 5.5 inside Pi is the required route.
+At that checkpoint, the Standards and Spec axes were unexamined, not clean or approved.
+The sibling task had already failed when cancellation was requested. No retry loop remained active.
 
-The implementation remains on the local `feat/shared-quality-guidance` branch pending that review.
+### Claude Code review and consensus
+
+The owner then explicitly selected Claude Code with Opus 5.5.
+Independent Standards and Spec reviews used `claudeAgent` with `claude-opus-5-5` against checkpoint `e059980`.
+The Standards review examined all seven changed files statically. It reported a profile-binding gap and three advisories.
+The Spec review found no scope creep, confirmed the owner-decision wording concern, and added a README wording advisory.
+It independently passed both draft application/CLI cases and reported two drained scopes without survivors.
+Neither reviewer repeated the full suite or browser test.
+
+A fresh Claude Code Opus 5.5 consensus review accepted all four normalized Standards findings in one round.
+It added no findings or reservations. Its verification was static.
+The owner approved F1–F4 and the separate README clarification before corrections started.
+
+| Finding | Correction |
+| --- | --- |
+| F1, major: incomplete instruction/profile binding | Fingerprint the policy and compare the captured text with the admitted digest before executor tools. |
+| F2, minor: unresolved-decision wording | Report the decision and retain partial work. Without a required answer, end the attempt as incomplete. |
+| F3, minor: generic policy-read failure | Return a sanitized, actionable code while preserving the application's safe blocked outcome. |
+| F4, nit: unnamed review-skill dependency | Name the installed two-axis `code-review` skill and distinguish it from the captured Warp skill. |
+| Spec advisory: intent described as delivered instructions | Describe the snapshot as prepared for model instructions, not proof of dispatch. |
+
+Consensus narrowed two original claims: later file edits do not replace an existing in-memory policy snapshot, and startup failures retain application evidence.
+The gaps concern profile freshness, snapshot consistency, and diagnostic specificity.
+
+### Correction verification
+
+Three behavioral regressions used the application/execution interface and actual files in a disposable runtime copy.
+They never modified this checkout's policy or any global skill.
+
+- A policy edit during a model response initially allowed completion. After fingerprinting, it fails before the pending tool call executes.
+- A policy edit between snapshot and admission initially allowed completion even after fingerprinting. The snapshot comparison now refuses executor activation.
+- A missing policy initially reported `execution_failed`. It now reports `EXECUTOR_POLICY_UNAVAILABLE`, preserves zero model/tool counters, and permits another explicit start.
+
+Each regression failed before its correction and passed afterward.
+The original deadline, retained policy text, passive offline inspection, and `reviewReady: false` remain covered.
+The combined focused selection passed **5/5** after the wording corrections, with **11** recorded scopes inactive and empty.
+Syntax, whitespace, strict prose thresholds, and unchanged dependency/runtime checks passed.
+The subsequent full-suite command was interrupted by the owner's request for parallel subagents; it is not a passing run.
+Its partial journal and the focused journal contain **148** exact scopes, all audited inactive and empty after interruption.
+No matching test process or active factory containment scope remained at that check; no cleanup signals were needed.
+The retained logs are under `/tmp/factory-quality-guidance-evidence/corrections/`.
+Full post-correction verification is pending at this checkpoint.
+The earlier Opus reviews and consensus cover the findings and recommended actions, not an independent review of the corrected code.
+
+The changes remain local on `feat/shared-quality-guidance`.
 No push, tracker mutation, factory production-model request, or real Vanguard operation occurred.

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { writeFile, readFile } from 'node:fs/promises';
+import { writeFile, readFile, unlink } from 'node:fs/promises';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -40,11 +40,13 @@ const brief = 'Goal: Trim fixture address whitespace.\nAcceptance criteria: Pres
 const scope = { writePaths: ['helper.mjs', 'helper.test.mjs'] };
 // This file is the owned instruction input. The contract under test is its
 // delivery through the real model adapter and retention through CLI inspection.
-const qualityText = kind === 'draft' ? await readFile(new URL('../../docs/agents/change-quality.md', import.meta.url), 'utf8') : undefined;
+const policyFile = fileURLToPath(new URL('../../docs/agents/change-quality.md', import.meta.url));
+if (kind.startsWith('policy-')) assert.equal(policyFile, join(root, 'runtime', 'docs', 'agents', 'change-quality.md'));
+const qualityText = kind === 'draft' || kind.startsWith('policy-') ? await readFile(policyFile, 'utf8') : undefined;
 const qualityPolicy = qualityText === undefined ? undefined : {
   source: 'docs/agents/change-quality.md', sha256: createHash('sha256').update(qualityText).digest('hex'), text: qualityText,
 };
-let policyFailure;
+let policyFailure; let policyChanged = false; let startupFailure;
 let factory = await openFactory({ stateDir, project, workspace });
 let server; let handle; let initialized = 0; let workStarted = false;
 let readOffset = 0; let received = ''; let feedbackFailure;
@@ -73,7 +75,7 @@ try {
   await factory.prepareDependencies(preparation.id, { bunPath: `${root}/bun` });
   const prepared = await until(() => factory.inspectRun(preparation.id), run => run.dependencies?.status === 'prepared' && run.status === 'blocked');
   await close();
-  const transport = controlledTransport((request, index) => {
+  const transport = controlledTransport(async (request, index) => {
     if (qualityPolicy) {
       try {
         const delivered = request.payload.input.filter(item => item.role === 'developer').map(item => item.content);
@@ -84,6 +86,7 @@ try {
     if (index === 1) return kind === 'refusal' ? new Response('controlled refusal', { status: 401 }) : eventsResponse();
     assert.deepEqual(request.payload.tools.map(tool => tool.name), ['read_file', 'write_file', 'run_check']);
     workStarted = true;
+    if (kind === 'policy-change' && index === 2) await writeFile(policyFile, `${qualityText}\nChanged controlled policy.\n`);
     if (kind === 'pagination') {
       try {
         if (index > 2) {
@@ -124,13 +127,18 @@ try {
       if (evidence.startsWith('{') && JSON.parse(evidence).kind === 'write') process.kill(process.pid, 'SIGKILL');
       return input.budget.settle(id, evidence, accounting);
     } } : input.budget;
+    if (kind === 'policy-missing' && !policyChanged) { await unlink(policyFile); policyChanged = true; }
     handle = await executor.start({ ...input, budget, saveAdmission(state) {
       input.saveAdmission(state);
       if (kind === 'smoke-crash' && state.status === 'verified') process.kill(process.pid, 'SIGKILL');
     }, saveExecutor(state) {
+      if (kind === 'policy-startup' && !policyChanged && state.events?.at(-1)?.type === 'intent') {
+        writeFileSync(policyFile, `${qualityText}\nChanged controlled policy.\n`);
+        policyChanged = true;
+      }
       if (kind === 'drain-report' && state.failure?.code === 'MODEL_DRAIN_FAILED') throw new Error('Controlled projection failure');
       input.saveExecutor(state);
-    } });
+    } }).catch(error => { startupFailure = error; throw error; });
     if (kind === 'completion-crash') return { ...handle, finished: handle.finished.then(() => process.kill(process.pid, 'SIGKILL')) };
     return handle;
   } };
@@ -141,7 +149,7 @@ try {
   const admitted = await start();
   assert.equal(admitted.execution.mode, 'repository-executor');
   assert.deepEqual(admitted.executor.scope, scope);
-  await until(async () => handle, Boolean);
+  await until(async () => handle || startupFailure, Boolean);
   if (['stop', 'drain-report'].includes(kind)) {
     await until(async () => workStarted, Boolean, 20000);
     if (kind === 'drain-report') {
@@ -157,11 +165,11 @@ try {
     const stopped = cli ? await command('stop', admitted.id) : await factory.stopRun(admitted.id);
     assert.equal(stopped.status, 'stopped');
   }
-  await handle.finished;
+  await handle?.finished;
   if (policyFailure) throw policyFailure;
   if (feedbackFailure) throw feedbackFailure;
   const run = await until(() => inspect(admitted.id), value => !['admitted', 'running'].includes(value.status));
-  assert.equal(run.status, kind === 'stop' ? 'stopped' : kind === 'refusal' ? 'blocked' : kind === 'check-output-limit' ? 'failed' : 'completed');
+  assert.equal(run.status, kind === 'stop' ? 'stopped' : ['refusal', 'policy-missing'].includes(kind) ? 'blocked' : ['check-output-limit', 'policy-change', 'policy-startup'].includes(kind) ? 'failed' : 'completed');
   assert.equal(run.outcome.reviewReady, false);
   assert.equal(run.capabilities.productionModel, false);
   if (kind === 'draft') {
@@ -169,6 +177,7 @@ try {
     assert.equal(run.executorEvidence.status, 'draft-produced'); assert.equal(run.executorEvidence.artifactStatus, 'retained');
     assert.equal(run.executorEvidence.plan.provenance, 'model-authored');
     assert.equal(run.admission.historical, true); assert.equal(run.admission.readiness, 'baseline-healthy');
+    assert.equal(run.admission.binding.executionProfile.implementation['../docs/agents/change-quality.md'], qualityPolicy.sha256);
     assert.equal(run.execution.submissionId, run.executor.submissionId);
     assert.notEqual(run.execution.submissionId, run.admission.smokeSubmissionId);
     assert.deepEqual(run.counters, { modelAttempts: 7, toolRounds: 9, reservedOutputTokens: 1024 + 6 * 8192 });
@@ -181,6 +190,31 @@ try {
     const next = (await inspect(run.id, { page: 0, offset: page.nextOffset, length: 64 })).executorEvidence.page;
     assert.equal(next.offset, 64);
   }
+  if (['policy-change', 'policy-startup'].includes(kind)) {
+    assert.equal(run.outcome.reason, 'ADMISSION_INVALIDATED');
+    assert.equal(transport.requests.length, kind === 'policy-startup' ? 1 : 2, 'No executor work after policy invalidation.');
+    assert.equal(run.counters.toolRounds, kind === 'policy-startup' ? 3 : 4);
+    if (kind === 'policy-startup') {
+      const admittedPolicy = run.admission.binding.executionProfile.implementation['../docs/agents/change-quality.md'];
+      assert.notEqual(admittedPolicy, qualityPolicy.sha256, 'The admitted policy differs from the captured instruction input.');
+      assert.equal(admittedPolicy, createHash('sha256').update(await readFile(policyFile)).digest('hex'));
+    }
+    assert.equal(run.executorEvidence.operations.length, 0, 'The pending model tool call must not execute.');
+    assert.equal(run.deadlineAt, admitted.deadlineAt);
+    await assert.rejects(handle.handoff(), { code: 'EXECUTOR_AUTHORITY_REQUIRED' });
+    assert.equal(await readFile(join(run.workspace.intent.worktree, 'helper.mjs'), 'utf8'), 'export const normalize = value => value;\n');
+  }
+  if (kind === 'policy-missing') {
+    assert.equal(run.outcome.reason, 'EXECUTOR_POLICY_UNAVAILABLE');
+    assert.equal(startupFailure.code, 'EXECUTOR_POLICY_UNAVAILABLE');
+    assert.equal(transport.requests.length, 0);
+    assert.deepEqual(run.counters, { modelAttempts: 0, toolRounds: 0, reservedOutputTokens: 0 });
+    assert.equal(run.executorEvidence.artifactStatus, 'missing');
+    const next = await factory.startRun({ requestId: 'after-policy-failure', brief, dependencyRunId: preparation.id, scope });
+    const blocked = await until(() => factory.inspectRun(next.id), value => value.status === 'blocked');
+    assert.equal(blocked.outcome.reason, 'EXECUTOR_POLICY_UNAVAILABLE', 'A safe startup failure must not fence further explicit starts.');
+    assert.equal(transport.requests.length, 0);
+  }
   if (kind === 'refusal') { assert.equal(transport.requests.length, 1); assert.equal(run.counters.toolRounds, 1); }
   if (['no-change', 'pagination'].includes(kind)) assert.equal(run.outcome.kind, 'no-change');
   if (kind === 'pagination') { assert.equal(received, evidenceText); assert.ok(readOffset > 0); }
@@ -192,13 +226,14 @@ try {
   }
   const attempts = transport.requests.length;
   assert.equal((await start()).id, run.id);
-  assert.equal(transport.requests.length, attempts); assert.equal(initialized, 1);
+  assert.equal(transport.requests.length, attempts); assert.equal(initialized, kind === 'policy-missing' ? 0 : 1);
   assert.deepEqual((await factory.inspectRun(prepared.id)).counters, prepared.counters);
   assert.equal(await readFile(join(project.repositoryPath, 'helper.mjs'), 'utf8'), 'export const normalize = value => value;\n');
   await close();
   const offline = await command('inspect', run.id, '--event', '0', '--length', '64');
   assert.equal(offline.status, run.status); assert.equal(offline.executorEvidence.status, run.executorEvidence.status);
-  if (qualityPolicy) {
+  assert.equal(offline.outcome.reason, run.outcome.reason);
+  if (qualityPolicy && kind !== 'policy-missing') {
     const intent = await readIntent(offset => command('inspect', run.id, '--event', '0', '--offset', String(offset), '--length', '4096'));
     assert.deepEqual(intent.qualityPolicy, qualityPolicy);
     assert.deepEqual(offline.counters, run.counters);

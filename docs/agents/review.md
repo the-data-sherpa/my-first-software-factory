@@ -1,7 +1,9 @@
 # Review a change and its evidence
 
 Read [Shared change quality](change-quality.md) before review.
-This guide supplements the existing review skill. It does not add a factory-runtime reviewer, change model routes, or authorize external actions.
+This guide supplements the installed two-axis `code-review` skill (Standards and Spec), not the captured Warp skill.
+Resolve its path through the available skill catalog.
+The guide does not add a factory-runtime reviewer, change model routes, or authorize external actions.
 
 ## Establish the review scope
 
