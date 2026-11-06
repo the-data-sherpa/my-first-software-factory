@@ -407,10 +407,12 @@ After confirmed drainage, fresh evidence, and a final original-deadline check, t
 It references the original task/evidence, actual plan/transcript, complete private patch and new files, checks, usage, and outcome.
 `inspect RUN_ID` revalidates evidence; `list` shows unverified summaries. Neither executes, repairs, or completes old work.
 Later edits invalidate projected freshness and readiness without changing saved history.
+The Work item's `status` retains its creation outcome; it is historical, not a current-readiness claim. Use the current `reviewReady`, `freshness`, and revalidated evidence together, never `status` alone.
 Controlled Work items always have `reviewReady: false`; conditional owner readiness is not Approval or permission to publish and has no live acceptance yet.
 No-change, blocked, failed, stopped, and interrupted attempts retain their actual partial evidence without a manufactured successful Work item.
 
-An interrupted composed run remains fenced pending trusted external reconciliation; `resume` refuses with `UNSAFE_RESUME`.
+Inspect an interrupted composed run first. It remains fenced pending trusted external reconciliation; `resume` refuses with `UNSAFE_RESUME`.
+Retirement or linked replacement requires a trusted quiescence assessment. The current composed adapter reports quiescence unconfirmed, so the CLI cannot retire or replace a crashed composed run merely from review text. No successful replacement of such a run is established.
 A qualified private artifact recorded just before a crash does not finalize the application run or create a Work item through inspection.
 Unconfirmed drainage outranks reporting failures. A reporting failure after confirmed drainage is a failed outcome, not an invented drain failure.
 See the [integration record](docs/implementation/ticket-09-integration.md), [composition](docs/implementation/qualified-execution.md), and [application contract](docs/implementation/qualification-application.md).

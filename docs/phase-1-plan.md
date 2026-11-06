@@ -337,7 +337,5 @@ Ticket #9 is now integrated locally through `createQualifiedRepositoryExecution`
 Controlled process checks produce one inspectable private Work item from actual executor writes and reject tautologies, stale evidence, and interrupted finalization without promoting incomplete work.
 The [integration record](implementation/ticket-09-integration.md) distinguishes these proofs from pending final combined verification and independent review. Ticket #9 remains unaccepted.
 The [qualification parent review](implementation/ticket-09-parent-review.md) retains the rejected first module result and historical corrections; the baseline command/profile correction and qualification hardening are now integrated rather than isolated. Real toolchain/provider/Vanguard acceptance and ticket #10 remain separate gates.
-A shared implementation gap remains: the admission command contains `--minWorkers=1`, absent from the supported Vitest 4.0.17 CLI definitions.
-Resolve the command and execution-profile binding together before claiming a complete owner path.
 Neither a model claim nor a factory-owned oracle substitutes for retained candidate regression tests failing on base and passing on draft.
 Live model acceptance, real Vanguard/toolchain compatibility, and the real #10 demonstration remain separately authorized work.

@@ -98,10 +98,12 @@ They add `qualificationEvidence` and replace `qualification` in the returned cop
 - A qualified verdict without a descriptor or the full check list is projected as invalid. Both qualifier and application enforce this shape.
 - A qualified verdict on a run that is not `completed` is projected with the run's status and `recordedStatus: 'qualified'`. A crash after qualification but before finalization stays interrupted, with no Work item.
 - A Work item shows `freshness: 'current'` only when the run is completed and its evidence revalidates. Otherwise it shows `invalidated`.
+- Its saved `status` records the creation outcome, even when unchecked or stale. It is not current readiness. Current `reviewReady`, `freshness`, and revalidated evidence must agree; a historical `review-ready` status alone authorizes nothing.
 
 `listRuns` and `inspectHistory` without a run ID do not hash artifacts.
 They show the bounded summary with `status: 'unverified'`, and a Work item with `freshness: 'unverified'`. This is never presented as current readiness.
-Inspection never calls the live verifier, loads a model, runs Git or checks, or schedules work. Opted-in interrupted runs refuse `resumeRun` with `UNSAFE_RESUME`. The existing external-reconciliation fence and linked-replacement path are unchanged.
+Inspection never calls the live verifier, loads a model, runs Git or checks, or schedules work. Opted-in interrupted runs refuse `resumeRun` with `UNSAFE_RESUME`.
+The general linked-replacement API requires trusted quiescence evidence for interrupted work. The current composed adapter always reports that quiescence is unconfirmed, so it does not provide a successful crashed-run replacement path. Review text cannot override the external-reconciliation fence.
 
 ## Verification performed
 

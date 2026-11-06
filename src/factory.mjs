@@ -487,7 +487,7 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
       assertControl();
       const record = get(id);
       if (record.status !== 'interrupted' || record.stopRequested) throw new FactoryError('RUN_NOT_INTERRUPTED', 'Only an interrupted run without a stop intent can be resumed.');
-      if (record.qualification) throw new FactoryError('UNSAFE_RESUME', 'A qualifying execution never resumes. Inspect its retained evidence and use an explicit linked replacement.');
+      if (record.qualification) throw new FactoryError('UNSAFE_RESUME', 'A qualifying execution never resumes. Inspect its retained evidence. Retirement or linked replacement requires trusted quiescence evidence; no reconciliation or replay was attempted.');
       if (job?.id === id && !job.drained) throw new FactoryError('RECOVERY_REQUIRED', 'The current backend still owns undrained work.');
       requireReview(review);
       requireRemainingBudget(record, clock.now());

@@ -1,5 +1,9 @@
 # Ticket #9: independent draft qualification module
 
+> Historical module record, superseded for current status on 2026-11-06.
+> The [integration record](ticket-09-integration.md) describes the combined executor, application, CLI, corrections, and remaining acceptance gates.
+> Present-tense gaps and parent-work statements below refer to the earlier isolated module checkpoint, not the current branch.
+
 ## Status and scope
 
 This isolated implementation starts from `48c40585972e56bd2bd6fe26d73f488238681ac7`.

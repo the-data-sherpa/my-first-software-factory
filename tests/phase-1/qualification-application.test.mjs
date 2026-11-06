@@ -203,7 +203,9 @@ test('a qualification drain failure stays fenced and never finalizes a Work item
   assert.deepEqual(run.outcome, { kind: 'uncertain', reviewReady: false, reason: 'drain_failed' });
   assert.equal(run.workItem, undefined);
   await assert.rejects(factory.startRun({ requestId: 'overlap', brief, dependencyRunId, scope }), { code: 'RUN_ACTIVE' });
-  await assert.rejects(factory.resumeRun(admitted.id, { review: 'Reviewed controlled fixture.' }), { code: 'UNSAFE_RESUME' });
+  await assert.rejects(factory.resumeRun(admitted.id, { review: 'Reviewed controlled fixture.' }), {
+    code: 'UNSAFE_RESUME', message: /Retirement or linked replacement requires trusted quiescence evidence/,
+  });
   await assert.rejects(factory.close(), { code: 'DRAIN_FAILED' });
   await assert.rejects(openFactory({ stateDir: f.stateDir, project: f.project }), { code: 'BACKEND_OWNED' });
 });

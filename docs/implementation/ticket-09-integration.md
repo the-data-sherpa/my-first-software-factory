@@ -49,7 +49,7 @@ Evidence directory: `/tmp/factory-ticket09-integration-parent/`.
 These are controlled transport/package/OS fixtures, not production runner or model evidence.
 
 - `owner-cli-red.log` → `owner-cli-green.log`: existing owner CLI mode failed before application opt-in, then initialized the pending owner qualification. No model call occurred.
-- `composed-green-red.log`: actual combined application/CLI success was initially blocked by the policy key. After B integration, `composed-pre-finalization-fix.log` passed the positive path and reproduced the deadline and persistence-code defects.
+- `composed-green-red.log`: actual combined application/CLI success initially blocked with `QUALIFICATION_INVALIDATED`; that log alone does not identify the invalidated input. After B integration, `composed-pre-finalization-fix.log` passed the positive path and reproduced the deadline and persistence-code defects.
 - `combined.log`: 11/11 application/CLI cases passed after those fixes: actual executor-produced draft/test/patch, one Work item, passive reconnect and late source invalidation; tautology and final lint rejection with a later explicit start; no-change/refusal; stop during qualification/finalization; deadline after execution close; reporting failure; actual process death during a contained check and after the qualified projection.
 - `parser-behavioral-red.log` → `parser-green.log`: both Unicode comment cases genuinely qualified before correction, then blocked. The earlier `parser-red.log` hit SQLite disk-I/O errors and is not behavioral red evidence.
 - `profile-red.log` → `profile-green.log`: edits to the disposable Work item projection and containment-entry modules incorrectly remained current without the supplemental hashes, then invalidated after binding them. The missing-module case in the first green run failed in the test client before it reached the backend; that fixture setup needed correction.
@@ -60,6 +60,19 @@ These are controlled transport/package/OS fixtures, not production runner or mod
 
 Relevant changes make earlier coverage stale. The frozen combined suite must re-execute the final source. Focused tests cover the corrected missing-module fixture and actual admission-profile case, but do not replace the full suite.
 Independent Standards, Spec, and safety coverage must distinguish examined evidence from missing real-runner/owner coverage.
+
+## Evidence-audit dispositions
+
+The independent read-only evidence/operator audit examined `9c44363` against `bc06be0`. Its report is `/tmp/factory-ticket09-opus-evidence-audit/report.md`. It did not run tests or establish full-suite acceptance.
+
+- **EA1, medium:** removed the stale plan paragraph claiming the unsupported baseline option remains unresolved. The preceding current integration description remains authoritative.
+- **EA2, medium:** corrected the resume refusal and recovery guidance. Inspect first; retirement or replacement needs trusted quiescence evidence. The current composed adapter reports quiescence unconfirmed, so no successful crashed composed-run replacement is claimed. A focused application regression first failed on the old unconditional replacement advice, then checked the corrected refusal without changing recovery gates.
+- **EA3, low:** marked the earlier module record historical, with a dated link to the current integration status. Its past failures and limitations remain retained.
+- **EA4, low:** described the initial log's actual invalidation code instead of claiming that the log itself identifies the policy-key cause.
+- **EA5, low advisory:** documented that Work item `status` is the historical creation outcome. Current readiness requires the projected readiness/freshness and validated evidence, not that status alone. No new positive owner-path claim or test authority was introduced.
+
+The full verification and other independent reviews remain targeted at frozen `9c44363`; these follow-up changes alter documentation and one diagnostic string, not recovery or execution gates. Their relevant checks are retained separately under `/tmp/factory-ticket09-integration-parent/evidence-audit-corrections/`: the diagnostic regression failed before the wording correction, then all 17 application cases passed with no skips. Syntax, whitespace, local links, and prose checks passed. The one recorded process-death scope was inactive and empty.
+The audit could not attribute three checks to separate scope journals. The parent used shared per-stream journals: `postjoin-scopes.jsonl` covers the five post-join cases plus admission-profile and pool-pin; `unknown-cleanup-scopes.jsonl` covers its red case, two corrected cases, and drain-recheck. Attribution relies on recorded invocation order, not a scenario field in each journal row. Their aggregate audits confirm every recorded unit inactive and empty.
 
 ## Evidence handling and limits
 
