@@ -1,5 +1,7 @@
 # Dependency compatibility: bounded Bun 1.3.14 lock profile
 
+Historical development record: the status/profile headers below describe earlier isolated checkpoints. B/G, the accepted graph/libc contracts and prerelease correction are now combined. See the [owner-requested publication checkpoint](publication-checkpoint.md) for current verification limits; earlier “unintegrated” and “unapproved” status statements are superseded there and by the accepted policy record.
+
 Stream B record for the [bounded Vanguard compatibility work](vanguard-compatibility.md).
 It changes registry admission (`admitDependencies` with `registry: true`) and the archive check during acquisition.
 It does not establish real archive availability, sizes, native-package behavior, actual Vitest, a healthy baseline, owner readiness, or #10 acceptance.

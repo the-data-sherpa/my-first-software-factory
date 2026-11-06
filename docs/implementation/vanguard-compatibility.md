@@ -1,5 +1,7 @@
 # Bounded Vanguard compatibility work
 
+Current publication state: see the [owner-requested checkpoint](publication-checkpoint.md). The development snapshots below are historical; B/G are now combined, while full-suite/browser/final Spec verification was stopped at the owner's request.
+
 ## Authority and fixed point
 
 On 2026-11-06 the owner said “Proceed” to the proposed factory-only compatibility batch, controlled tests, and independent Claude Code Opus 5.5 Standards and Spec reviews.

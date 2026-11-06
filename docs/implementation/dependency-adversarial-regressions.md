@@ -1,5 +1,7 @@
 # Dependency admission adversarial regressions
 
+Historical isolation note: this branch now contains the dependency implementation and these regressions. The former load/integration restriction below is superseded. Current verification limits are recorded in the [publication checkpoint](publication-checkpoint.md).
+
 ## Scope
 
 `tests/phase-1/dependencies-compatibility-adversarial.test.mjs` adds 11 admission-only Node tests from the independent adversarial probe.
