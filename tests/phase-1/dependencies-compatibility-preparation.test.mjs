@@ -101,7 +101,7 @@ test('frozen Bun resolves prerelease cache boundaries with exact identities, cas
 
 test('published metadata the lock does not record refuses during acquisition before Bun installation starts', async (t) => {
   await scenario(t, 'archive-metadata', results => {
-    assert.equal(Object.keys(results).length, 6);
+    assert.equal(Object.keys(results).length, 5);
     for (const [name, result] of Object.entries(results)) {
       assert.equal(result.code, 'DEPENDENCIES_UNSUPPORTED', name);
       assert.equal(result.installLaunched, false, name);

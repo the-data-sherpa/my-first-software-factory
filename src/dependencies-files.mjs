@@ -4,6 +4,10 @@ import { resolve, dirname, join, posix } from 'node:path';
 import { createHash } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
 
+export const DEPENDENCY_FILE_BYTES = 8 * 1024 ** 2;
+export const DEPENDENCY_EXPORT_BYTES = 64 * 1024 ** 2;
+export const DEPENDENCY_RECEIPT_BYTES = 16 * 1024 ** 2;
+
 export const hash = (value) => createHash('sha256').update(value).digest('hex');
 export const unsafe = () => { throw Object.assign(new Error('Unsafe dependency input.'), { code: 'DEPENDENCIES_UNSAFE' }); };
 export async function directory(path) {
@@ -111,7 +115,7 @@ export function validateExport(files) {
     if (file.type === 'file') {
       if (typeof file.data !== 'string' || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(file.data)) unsafe();
       bytes += Buffer.byteLength(file.data, 'base64');
-      if (Buffer.byteLength(file.data, 'base64') > 8 * 1024 ** 2 || bytes > 64 * 1024 ** 2) unsafe();
+      if (Buffer.byteLength(file.data, 'base64') > DEPENDENCY_FILE_BYTES || bytes > DEPENDENCY_EXPORT_BYTES) unsafe();
     } else if (!['directory', 'symlink'].includes(file.type)) unsafe();
     paths.set(file.path, file);
   }
@@ -154,7 +158,7 @@ export async function verifyInventory(destination, inventory) {
       const absolute = join(destination, relative); const info = await lstat(absolute);
       if (info.uid !== process.getuid()) unsafe();
       if (info.isDirectory()) { if ((info.mode & 0o777) !== 0o500) unsafe(); actual.push({ path: relative, type: 'directory', mode: 0o500 }); await walk(relative); }
-      else if (info.isFile()) { const data = await regular(absolute, 8 * 1024 ** 2); actual.push({ path: relative, type: 'file', mode: info.mode & 0o777, bytes: data.length, sha256: hash(data) }); }
+      else if (info.isFile()) { const data = await regular(absolute, DEPENDENCY_FILE_BYTES); actual.push({ path: relative, type: 'file', mode: info.mode & 0o777, bytes: data.length, sha256: hash(data) }); }
       else if (info.isSymbolicLink()) actual.push({ path: relative, type: 'symlink', target: await readlink(absolute) });
       else unsafe();
       if (actual.length > 20000) unsafe();

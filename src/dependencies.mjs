@@ -5,11 +5,12 @@ import { createHash } from 'node:crypto';
 import { inspectWorkspace } from './workspace.mjs';
 import { acquireOwner, privateDirectory, openRecords } from './storage.mjs';
 import { verifyContainmentEnvelope } from './containment.mjs';
-import { hash, directory, regular, save, archiveManifest, seal, verifyInventory, parseDependencyJSON } from './dependencies-files.mjs';
+import { hash, directory, regular, save, archiveManifest, seal, verifyInventory, parseDependencyJSON, DEPENDENCY_RECEIPT_BYTES } from './dependencies-files.mjs';
 import { libraries, runPreparationSandbox } from './dependencies-process.mjs';
 import { proveScriptSuppression } from './dependencies-self-test.mjs';
 import { parseBunLock, registryPlan, HOST } from './dependencies-lock.mjs';
 import { acquireRegistry, verifyAcquisition, REGISTRY } from './dependencies-registry.mjs';
+import { verifyInstalledGraph } from './dependencies-graph.mjs';
 
 const INSTRUCTION = 'Ask the owner to admit and explicitly prepare a matching private dependency bundle through the foreground preparation operation. Agent tools cannot install packages.';
 const explanations = {
@@ -52,14 +53,16 @@ async function toolchain(bunPath, registry = false) {
   if (typeof bunPath !== 'string' || await realpath(bunPath) !== bunPath) fail('DEPENDENCIES_UNSAFE');
   const paths = [bunPath, await realpath(process.execPath), await realpath('/usr/bin/bwrap'),
     ...await Promise.all(libraries.map((library) => realpath(`/usr/lib/${library}`))),
-    ...(registry ? [fileURLToPath(new URL('./dependencies-cache.mjs', import.meta.url))] : [])];
+    ...(registry ? ['dependencies.mjs', 'dependencies-files.mjs', 'dependencies-lock.mjs', 'dependencies-registry.mjs',
+      'dependencies-process.mjs', 'dependencies-worker.mjs', 'dependencies-self-test.mjs', 'dependencies-graph.mjs', 'dependencies-cache.mjs']
+      .map(name => fileURLToPath(new URL(name, import.meta.url))) : [])];
   const files = [];
   for (const path of paths) {
     const info = await lstat(path);
     if (!info.isFile() || info.mode & 0o022 || ![0, process.getuid()].includes(info.uid) || info.size > 256 * 1024 ** 2) fail('DEPENDENCIES_UNSAFE');
     files.push({ path, sha256: hash(await readFile(path)), mode: info.mode & 0o777 });
   }
-  return { policy: registry ? 'bun-registry-cache-v2' : 'offline-tarball-v1', nodeVersion: process.versions.node, files };
+  return { policy: registry ? 'bun-registry-verified-v1' : 'offline-tarball-v1', nodeVersion: process.versions.node, files };
 }
 
 async function inputs(workspaceIntent, registry = false) {
@@ -134,6 +137,19 @@ export async function admitDependencies({ workspaceIntent, bunPath, registry = f
 export function dependencyDirectory(intent) {
   return join(intent.workspaceIntent.stateDir, 'runs', intent.workspaceIntent.runId, 'dependencies', intent.id);
 }
+async function installedGraph(destination, intent, inventory, signal) {
+  const read = async path => {
+    const expected = intent.files.find(file => file.path === path);
+    if (!expected) fail('DEPENDENCIES_UNSAFE');
+    const bytes = await regular(`${destination}/input/${path}`, 32 * 1024 ** 2);
+    if (bytes.length !== expected.bytes || hash(bytes) !== expected.sha256) fail('DEPENDENCIES_UNSAFE');
+    return bytes;
+  };
+  const manifest = parseDependencyJSON(await read('package.json'));
+  const lock = parseBunLock(await read('bun.lock'));
+  return verifyInstalledGraph({ directory: `${destination}/bundle`, archivesDirectory: `${destination}/archives`,
+    inventory, manifest, lock, plan: intent.acquisition, signal });
+}
 async function validate(intent) {
   if (!intent || intent.version !== 1 || intent.id !== identity(intent) || intent.sourceManifestId !== intent.workspaceIntent?.sourceManifest?.id) fail('DEPENDENCIES_UNSAFE');
   const registry = intent.acquisition !== undefined;
@@ -200,12 +216,15 @@ export async function prepareDependencies(intent, { signal, authorizeRegistryFet
       }
       await validate(intent); // Toolchain/source changed while preparing: never seal as valid.
       const inventory = await seal(`${destination}/bundle`, installed.output.files, () => cancelled(signal));
+      const graph = intent.acquisition ? await installedGraph(destination, intent, inventory, signal) : undefined;
       cancelled(signal);
       const receipt = { version: 1, status: 'prepared', intentId: intent.id, sourceManifestId: intent.sourceManifestId,
         toolchain: intent.toolchain, inventory, inventoryDigest: hash(JSON.stringify(inventory)),
         bunVersion: installed.output.bunVersion, sentinels: installed.output.sentinels,
         network: installed.network, boundary: installed.output.boundary, launch: installed.launch, envelope: installed.envelope, logBytes: installed.logBytes,
-        scripts: 'disabled', suppression, acquisition, frozenLockfile: true, reviewReady: false };
+        scripts: 'disabled', suppression, acquisition, frozenLockfile: true, reviewReady: false,
+        ...(graph ? { graph } : {}) };
+      if (intent.acquisition && Buffer.byteLength(JSON.stringify(receipt)) > DEPENDENCY_RECEIPT_BYTES) fail('DEPENDENCIES_BUNDLE_LIMIT');
       await save(`${destination}/result.json`, receipt); return receipt;
     } catch (error) {
       try { await save(`${destination}/failure.json`, serializeDependencyError(error)); }
@@ -222,7 +241,7 @@ export async function inspectDependencies(intent) {
     try { await directory(destination); } catch (error) { if (error.code === 'ENOENT') return { status: 'not-prepared', intentId: intent.id }; throw error; }
     if (!Buffer.from(`${JSON.stringify(intent)}\n`).equals(await regular(`${destination}/intent.json`))) fail('DEPENDENCIES_UNSAFE');
     try {
-      const receipt = JSON.parse((await regular(`${destination}/result.json`, 16 * 1024 ** 2)).toString('utf8'));
+      const receipt = JSON.parse((await regular(`${destination}/result.json`, DEPENDENCY_RECEIPT_BYTES)).toString('utf8'));
       if (receipt.status !== 'prepared' || receipt.intentId !== intent.id || receipt.sourceManifestId !== intent.sourceManifestId
         || JSON.stringify(receipt.toolchain) !== JSON.stringify(intent.toolchain) || receipt.inventoryDigest !== hash(JSON.stringify(receipt.inventory))) fail('DEPENDENCIES_UNSAFE');
       const proof = JSON.parse((await regular(`${destination}/script-proof/result.json`, 65536)).toString('utf8'));
@@ -231,6 +250,10 @@ export async function inspectDependencies(intent) {
         || proof.bunVersion !== receipt.bunVersion || proof.positive?.length !== 6 || proof.suppressed?.length !== 0) fail('DEPENDENCIES_UNSAFE');
       await verifyAcquisition(destination, intent, receipt.acquisition);
       await verifyInventory(`${destination}/bundle`, receipt.inventory);
+      if (intent.acquisition) {
+        const graph = await installedGraph(destination, intent, receipt.inventory);
+        if (JSON.stringify(receipt.graph) !== JSON.stringify(graph)) fail('DEPENDENCIES_UNSAFE');
+      } else if (receipt.graph !== undefined) fail('DEPENDENCIES_UNSAFE');
       return receipt;
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;

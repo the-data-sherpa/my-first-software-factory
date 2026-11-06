@@ -99,6 +99,12 @@ function satisfies(version, sets) {
   }) && (!version.pre.length || set.some(([, bound]) => bound.pre.length && bound.release.every((value, index) => value === version.release[index]))));
 }
 
+export function registrySatisfies(version, spec) {
+  const parsed = parseVersion(version);
+  if (!parsed) fail();
+  return satisfies(parsed, parseRange(spec));
+}
+
 const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const only = (value, keys) => { if (!object(value) || Object.keys(value).some((key) => !keys.includes(key))) fail(); };
 export const canonical = (value) => JSON.stringify(value, function (key, item) {
@@ -249,15 +255,21 @@ export function registryPlan(manifest, lock) {
   return result;
 }
 
-// A published manifest must declare exactly the relationships, platforms, and bins its lock tuple records.
-const binMap = (bin, name) => typeof bin === 'string' ? { [name.split('/').at(-1)]: bin } : bin ?? {};
-const binsMatch = (archive, locked, name) => canonical(Object.fromEntries(Object.entries(binMap(archive, name)).map(([key, path]) => [key, String(path).replace(/^\.\//, '')])))
-  === canonical(Object.fromEntries(Object.entries(binMap(locked, name)).map(([key, path]) => [key, path.replace(/^\.\//, '')])));
+// Published relationships, OS/CPU selection, and bins must match the lock; libc is recognized metadata, not a selector.
+export const registryBins = (bin, name) => typeof bin === 'string' ? { [name.split('/').at(-1)]: bin } : bin ?? {};
+const binsMatch = (archive, locked, name) => canonical(Object.fromEntries(Object.entries(registryBins(archive, name)).map(([key, path]) => [key, String(path).replace(/^\.\//, '')])))
+  === canonical(Object.fromEntries(Object.entries(registryBins(locked, name)).map(([key, path]) => [key, path.replace(/^\.\//, '')])));
 export function registryArchive(bytes, entry) {
   if (`sha512-${createHash('sha512').update(bytes).digest('base64')}` !== entry.integrity) {
     throw Object.assign(new Error('Locked archive integrity mismatch.'), { code: 'DEPENDENCIES_INTEGRITY' });
   }
   const { manifest, files } = archiveEntries(bytes);
+  validateRegistryManifest(manifest, entry);
+  return files;
+}
+
+export function validateRegistryManifest(manifest, entry) {
+  if (!object(manifest) || !object(entry) || !object(entry.metadata)) fail();
   const locked = entry.metadata;
   if (manifest.name !== entry.name || manifest.version !== entry.version) fail();
   for (const key of ['dependencies', 'optionalDependencies', 'peerDependencies']) if (canonical(manifest[key] ?? {}) !== canonical(locked[key] ?? {})) fail();
@@ -270,9 +282,13 @@ export function registryArchive(bytes, entry) {
   }
   if (!(manifest.bin === undefined || typeof manifest.bin === 'string' || object(manifest.bin))
     || !binsMatch(manifest.bin, locked.bin, entry.name) || manifest.directories?.bin !== undefined) fail();
+  if (Object.hasOwn(manifest, 'libc')) {
+    const values = typeof manifest.libc === 'string' ? [manifest.libc] : manifest.libc;
+    if (!Array.isArray(values) || !values.length || new Set(values).size !== values.length
+      || values.some(value => !['glibc', 'musl'].includes(value))) fail();
+  }
   for (const key of ['devDependencies', 'bundledDependencies', 'bundleDependencies',
-    'workspaces', 'patchedDependencies', 'overrides', 'resolutions', 'publishConfig', 'config', '_auth', '_authToken', 'libc']) {
+    'workspaces', 'patchedDependencies', 'overrides', 'resolutions', 'publishConfig', 'config', '_auth', '_authToken']) {
     if (manifest[key] && Object.keys(manifest[key]).length) fail();
   }
-  return files;
 }

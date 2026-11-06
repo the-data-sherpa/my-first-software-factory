@@ -69,7 +69,6 @@ const archiveVariants = {
     { peerDependencies: { right: '~2.0.0' }, peerDependenciesMeta: { right: { optional: true } } }],
   'different platform': [{ dependencies: { right: '~2.0.0' }, os: 'linux' }, { os: ['darwin'] }],
   'different bin': [{ dependencies: { right: '~2.0.0' }, bin: 'cli.js' }, { bin: { left: './other.js' } }, { 'cli.js': '1', 'other.js': '1' }],
-  'libc declaration': [{ dependencies: { right: '~2.0.0' }, os: 'linux', cpu: 'x64' }, { libc: ['musl'] }],
 };
 
 try {

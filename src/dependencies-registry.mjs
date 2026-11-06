@@ -11,6 +11,10 @@ export const REGISTRY = 'https://registry.npmjs.org';
 export const FETCH_LIMITS = Object.freeze({ archives: 2000, archiveBytes: 16 * 1024 ** 2, totalBytes: 64 * 1024 ** 2,
   expandedBytes: 64 * 1024 ** 2, entries: 20000, durationMs: 120_000, idleMs: 10_000 });
 const failure = (code) => Object.assign(new Error('Locked registry acquisition failed.'), { code });
+export function retainedArchivePath(archivesDirectory, index) {
+  if (typeof archivesDirectory !== 'string' || !Number.isSafeInteger(index) || index < 0) unsafe();
+  return `${archivesDirectory}/${index}.tgz`;
+}
 function endpoint(transport) {
   if (transport === undefined) return REGISTRY;
   // A trusted test adapter, never taken from package.json, a lock URL, environment or user configuration.
@@ -73,7 +77,7 @@ export async function verifyAcquisition(destination, intent, receipt) {
   if ((await readdir(`${destination}/archives`)).length !== acquired.archives.length) unsafe();
   let total = 0;
   for (const [index, entry] of intent.acquisition.archives.entries()) {
-    const data = await regular(`${destination}/archives/${index}.tgz`, FETCH_LIMITS.archiveBytes);
+    const data = await regular(retainedArchivePath(`${destination}/archives`, index), FETCH_LIMITS.archiveBytes);
     const actual = { path: entry.path, integrity: `sha512-${createHash('sha512').update(data).digest('base64')}`, sha256: hash(data), bytes: data.length };
     if (actual.integrity !== entry.integrity || JSON.stringify(actual) !== JSON.stringify(acquired.archives[index])) unsafe();
     total += data.length;
@@ -103,7 +107,7 @@ export async function acquireRegistry({ destination, plan, intentId, signal, reg
       const files = registryArchive(bytes, entry);
       for (const file of files) { expanded += file.data.length; entries++; }
       if (expanded > FETCH_LIMITS.expandedBytes || entries > FETCH_LIMITS.entries) throw failure('DEPENDENCIES_FETCH_LIMIT');
-      await writeFile(`${destination}/archives/${index}.tgz`, bytes, { flag: 'wx', mode: 0o400 });
+      await writeFile(retainedArchivePath(`${destination}/archives`, index), bytes, { flag: 'wx', mode: 0o400 });
       const base = `${cache}/${entry.cachePath}`; await mkdir(base, { recursive: true, mode: 0o700 });
       for (const file of files) {
         if (controller.signal.aborted) throw failure('DEPENDENCIES_ABORTED');
