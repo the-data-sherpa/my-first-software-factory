@@ -27,7 +27,8 @@ Raise a contract conflict rather than silently changing another stream's interfa
 
 The factory owns the backend lifetime lock, immutable run identity, saved source intent, and explicit dependency-run selection.
 It supplies the original `budget` and `signal` to every stage.
-The trusted budget exposes `remainingMs` from its original application clock; qualification uses that duration for its cancellation timer instead of mixing clock domains.
+The trusted budget exposes `remainingMs` from its original application clock. Qualification schedules its global cancellation timer with that duration rather than subtracting wall-clock time from the admitted deadline.
+The factory's original timer still uses its configured scheduler and aborts qualification through `budget.signal`.
 No stage starts another run, resets a budget, discovers another bundle, installs packages, or reopens a scheduler during inspection.
 All operations remain within the original 20-minute deadline, 40 model attempts, and 30 tool rounds, including verification.
 Checks remain sequential and contained. Live ownership cannot end before model and namespace drainage completes.

@@ -112,6 +112,16 @@ The first clock test used a stale pre-dispatch executor projection. It failed be
 `public-seams-green.log` passed **51/51** factory, qualification-application, and recovery cases, with no skips. The scope audit covers all three recorded process-death units from the light application rechecks. Each was inactive and empty.
 These checks do not replace the still-pending frozen full suite, browser result, or a subsequent actual composed-path recheck. No heavy package fixture was run alongside the full verifier for these corrections.
 
+### Follow-up Opus rechecks
+
+Fresh independent Standards and Spec rechecks examined `9c44363` → `9d04c8f`, including `ffd5566`. Their reports are `/tmp/factory-ticket09-followup-standards-recheck-opus/report.md` and `/tmp/factory-ticket09-followup-spec-recheck-opus/report.md`.
+Both found no material new implementation defect and confirmed the six source/test files match the retained target hashes. They ran no runtime tests. Standards inspected the diagnostic and correction logs. Spec did not inspect the earlier diagnostic or static-check logs. Neither examined a completed full suite or a composed-path recheck at the changed source.
+
+The Spec recheck found one low documentation gap: this batch now also marks `ticket-09-parent-review.md` historical, preserving its earlier failures. It also clarified that the qualifier uses the application's remaining duration with global scheduling. The factory's own scheduler remains authoritative through its abort signal.
+The malformed-change-list summary advisory remains open: a non-array list displays zero summaries while separate inspection evidence reports its validity. No qualified authority follows from that summary. Historical owner Work item status remains a disclosed, untested owner-path advisory.
+The projection red predates insertion of the clock test. Its 65-versus-32 assertion was unchanged, but it is not evidence on the byte-for-byte final test file. The final hash manifest identifies the reviewed source, not every earlier red invocation.
+These documentation-only follow-ups do not alter the runtime or test files reviewed at `9d04c8f`. Parent static/link/prose checks cover them. The original full verifier and the SP-S1 owner decision remain outstanding.
+
 ## Preconditions before separately authorized #10 work
 
 Before a real maintenance attempt, separately authorize and establish all of the following:

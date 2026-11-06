@@ -1,5 +1,9 @@
 # Ticket #9 parent review checkpoint
 
+> Historical parent review, superseded for current status on 2026-11-06.
+> The [integration record](ticket-09-integration.md) describes the combined implementation, corrections, and remaining acceptance gates.
+> Present-tense integration and baseline-command gaps below refer to the earlier reviewed checkpoint, not the current branch.
+
 Reviewed implementation: `15361b393fc64c0a04313f006eb158ff5ac5b039`, based on `48c4058`.
 The parent has not integrated or accepted ticket #9.
 Ticket #8 was a separate implementation stream at this first review. Its controlled checkpoint is now accepted; #9 is still not integrated.
