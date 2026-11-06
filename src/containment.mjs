@@ -212,10 +212,11 @@ async function createExecution({ worktree, receiptDirectory, signal, protectedPa
           '--ro-bind', `${mountDirectory}/input.json`, '/input.json', '--proc', '/proc', '--remount-ro', '/proc',
           '--dev', '/dev', '--remount-ro', '/dev', '--size', String(limits.scratchBytes), '--tmpfs', '/tmp',
           '--remount-ro', '/', '--chdir', '/work', '--seccomp', '3', '--block-fd', '4', '--info-fd', '5', '--', '/runtime/node',
-          ...(adapters ? ['/work/node_modules/vitest/vitest.mjs', 'run', '--maxWorkers=2', '--no-file-parallelism', '--configLoader=runner', '--no-cache',
+          // Qualification pins forks over any repository pool: worker threads would share the report descriptor.
+          ...(adapters ? ['/work/node_modules/vitest/vitest.mjs', 'run', '--pool=forks', '--maxWorkers=2', '--no-file-parallelism', '--configLoader=runner', '--no-cache',
             '--no-watch', '--retry=0', '--no-allowOnly', '--no-passWithNoTests',
             ...(adapters['config.mjs'] ? ['--config', '/verification/config.mjs'] : []), '--reporter', '/verification/reporter.mjs']
-            : name === 'vitest' ? ['/work/node_modules/vitest/vitest.mjs', 'run', '--maxWorkers=2', '--minWorkers=1']
+            : name === 'vitest' ? ['/work/node_modules/vitest/vitest.mjs', 'run', '--maxWorkers=2', '--no-file-parallelism']
             : name === 'lint' ? ['/work/node_modules/eslint/bin/eslint.js', '.', '--no-cache'] : ['/probe.mjs', name]));
         const eventsBefore = await resourceEvents(envelope);
         let launch; let length = 0; let reportLength = 0; const output = []; const reports = [];

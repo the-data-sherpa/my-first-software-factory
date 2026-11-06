@@ -62,7 +62,7 @@ test('fixed execution reuses installed packages on kernel read-only mounts with 
   assert.equal(result.boundary.probe.readOnlyBundle, true);
   const output = JSON.parse(result.check.output);
   assert.equal(output.installed, '1.0.0');
-  assert.deepEqual(output.argv, ['run', '--maxWorkers=2', '--minWorkers=1']);
+  assert.deepEqual(output.argv, ['run', '--maxWorkers=2', '--no-file-parallelism']);
   assert.deepEqual(Object.values(output.writes), ['EROFS', 'EROFS', 'EROFS']);
   assert.equal(output.network, 'EPERM');
   assert.equal(result.forged, 'DEPENDENCIES_UNSAFE');

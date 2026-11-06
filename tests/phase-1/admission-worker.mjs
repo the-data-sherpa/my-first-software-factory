@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { writeFile, chmod, readdir, mkdir } from 'node:fs/promises';
+import { writeFile, chmod, readdir, mkdir, readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +13,7 @@ import { serveFactory } from '../../src/control-server.mjs';
 import { inspectContainedChecks } from '../../src/containment.mjs';
 import { controlledRuntime, controlledTransport, eventsResponse } from './model-fixtures.mjs';
 import { until } from '../phase-0/helpers.mjs';
+import { vitestBaselineCli } from '../fixtures/vitest-baseline-cli.mjs';
 
 const [root, requested = 'success'] = process.argv.slice(2);
 const cli = requested.startsWith('cli-');
@@ -19,7 +21,7 @@ const scenario = requested.replace(/^cli-/, '');
 const exec = promisify(execFile);
 const executable = fileURLToPath(new URL('../../bin/factory.mjs', import.meta.url));
 globalThis.fetch = async () => { throw new Error('Uncontrolled network forbidden'); };
-const fixture = await dependencyFixture(root, { copyToolchain: true, checkSuffix: `
+const fixture = await dependencyFixture(root, { copyToolchain: true, checkSuffix: `${vitestBaselineCli}
 if (${JSON.stringify(scenario)} === 'vitest' && process.argv.includes('run')) process.exitCode = 7;
 if (${JSON.stringify(scenario)} === 'lint' && process.argv.includes('--no-cache')) process.exitCode = 8;
 if (['between-checks','stop-check','deadline-check','shutdown-check','crash'].includes(${JSON.stringify(scenario)})) await new Promise(r => setTimeout(r, 1500));
@@ -122,7 +124,15 @@ try {
       return { ...receipt, status: 'admission-blocked', reason: 'ADMISSION_INVALIDATED' };
     }) };
   } } : execution;
-  const bounded = ['tool-limit', 'model-limit', 'model-drain-report'].includes(scenario) ? { ...wrapped, async start(input) {
+  const qualifiedFiles = ['qualified-execution.mjs', 'qualification.mjs', 'qualification-artifacts.mjs', 'qualification-source.mjs',
+    'qualification-selection.mjs', 'qualification-scope.mjs', 'qualification-reporting.mjs', 'qualification-reporter.mjs'];
+  const composedModule = await readFile(new URL('../../src/qualified-execution.mjs', import.meta.url)).then(() => true, () => false);
+  let composedStates = [];
+  const bounded = ['tool-limit', 'model-limit', 'model-drain-report', 'qualified-profile'].includes(scenario) ? { ...wrapped, async start(input) {
+    // Stands in for the application's opted-in composed run record; the profile alone is under test here.
+    if (scenario === 'qualified-profile') return wrapped.start({ ...input,
+      run: { ...input.run, qualification: { version: 1, runId: input.run.id, kind: 'controlled-fixture', status: 'pending', reviewReady: false } },
+      saveAdmission: state => { composedStates.push(structuredClone(state)); input.saveAdmission(state); } });
     if (scenario === 'tool-limit') for (let i = 0; i < 28; i++) input.budget.settle(input.budget.reserveToolRound({ roundId: `prior:${i}` }).id, 'Controlled prior round in the original run.');
     if (scenario === 'model-limit') for (let i = 0; i < 40; i++) input.budget.settle(input.budget.reserveModelAttempt({ generationId: `prior:${i}` }).id, 'Controlled prior model allowance in the original run.');
     return wrapped.start({ ...input, saveAdmission: state => {
@@ -192,7 +202,12 @@ try {
       assert.deepEqual(result.admission.baselines.map(r => [r.name, r.passed]), [['vitest', true], ['lint', true]]);
       assert.equal(new Set(result.admission.baselines.map(r => r.sourceDigest)).size, 1);
       assert.equal(new Set(result.admission.baselines.map(r => r.bindingDigest)).size, 1);
-      assert.deepEqual(result.admission.baselines.map(r => JSON.parse(r.output.trim()).argv), [['run', '--maxWorkers=2', '--minWorkers=1'], ['.', '--no-cache']]);
+      const outputs = result.admission.baselines.map(r => r.output.trim().split('\n').map(line => JSON.parse(line)));
+      assert.deepEqual(outputs.map(([first]) => first.argv), [['run', '--maxWorkers=2', '--no-file-parallelism'], ['.', '--no-cache']]);
+      // The executed consumer accepted every option and resolved serial files within the two-worker ceiling.
+      assert.deepEqual(outputs[0][1], { vitestCli: { resolved: { watch: false, fileParallelism: false, maxWorkers: 1 } } });
+      assert.equal(outputs[1].length, 1);
+      for (const name of qualifiedFiles) assert.equal(name in result.admission.binding.executionProfile.implementation, false, name);
       assert.ok(result.admission.baselines[0].finishedAt <= result.admission.baselines[1].startedAt);
       assert.equal(result.admission.containment.probe.readOnlyBundle, true);
       assert.equal(transport.requests[0].payload.tools?.length ?? 0, 0);
@@ -205,6 +220,21 @@ try {
       const stale = await inspect(result.id);
       assert.equal(stale.admission.readiness, 'invalidated');
       assert.equal(transport.requests.length, 1);
+    } else if (scenario === 'qualified-profile') {
+      const bound = composedStates.findLast(state => state.binding)?.binding;
+      if (composedModule) {
+        // Composed runs bind the qualified execution and qualifier modules in addition to the legacy profile.
+        for (const name of qualifiedFiles) {
+          assert.equal(bound.executionProfile.implementation[name], createHash('sha256').update(await readFile(new URL(`../../src/${name}`, import.meta.url))).digest('hex'), name);
+        }
+        assert.deepEqual(composedStates.at(-1).baselines.map(r => [r.name, r.passed]), [['vitest', true], ['lint', true]]);
+        assert.equal(composedStates.at(-1).readiness, 'baseline-healthy');
+      } else {
+        // Without the composed module the profile cannot be computed: block before any gate effect.
+        assert.equal(bound, undefined);
+        assert.equal(result.status, 'blocked'); assert.equal(result.outcome.reason, 'ADMISSION_FAILED');
+        assert.equal(result.admission.baselines.length, 0); assert.equal(initializations, 0); assert.equal(transport.requests.length, 0);
+      }
     } else if (scenario.startsWith('stop-') || scenario.startsWith('shutdown-')) {
       assert.equal(result.status, 'stopped');
       assert.equal(result.admission.readiness === 'baseline-healthy', false);
@@ -237,6 +267,6 @@ try {
     assert.equal(passive.deadlineAt, result.deadlineAt);
     assert.equal((await factory.startRun({ requestId: 'admission', brief, dependencyRunId: selected })).id, result.id);
     assert.equal(initializations <= 1, true);
-    process.stdout.write(`${JSON.stringify({ scenario, root, result, checks, requests: transport.requests.length, initializations, handoffEvidence })}\n`);
+    process.stdout.write(`${JSON.stringify({ scenario, root, result, checks, requests: transport.requests.length, initializations, handoffEvidence, ...(scenario === 'qualified-profile' ? { composedModule } : {}) })}\n`);
   }
 } finally { await close(); }

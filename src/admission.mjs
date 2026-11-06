@@ -18,18 +18,21 @@ const instruction = 'Inspect the retained admission/check evidence. Correct prer
 const fail = (code) => { throw new FactoryError(code, instruction); };
 const isDrain = error => ['DRAIN_FAILED', 'MODEL_DRAIN_FAILED'].includes(error?.code);
 
+// Only composed runs carry run.qualification; legacy admission/executor profiles never hash these modules.
+const qualifiedFiles = ['qualified-execution.mjs', 'qualification.mjs', 'qualification-artifacts.mjs', 'qualification-source.mjs',
+  'qualification-selection.mjs', 'qualification-scope.mjs', 'qualification-reporting.mjs', 'qualification-reporter.mjs'];
 async function profile(run, dependencies, kind) {
   const files = {};
   for (const name of ['admission.mjs', 'run-tools.mjs', 'containment.mjs', 'containment-files.mjs',
     'containment-probe.mjs', 'containment-filter.mjs', 'containment-namespace.mjs', 'dependencies.mjs',
     'dependencies-files.mjs', 'dependencies-lock.mjs', 'model.mjs', 'model-execution.mjs', 'model-transport.mjs', 'model-accounting.mjs',
     'executor.mjs', 'executor-policy.mjs', 'executor-artifacts.mjs', 'executor-model.mjs', 'executor-tools.mjs',
-    '../docs/agents/change-quality.md']) {
+    '../docs/agents/change-quality.md', ...(run.qualification ? qualifiedFiles : [])]) {
     files[name] = hash(await readFile(new URL(name, import.meta.url)));
   }
   return { version: 1, kind, model: MODEL_ROUTE, reasoning: 'low', limits: run.limits,
     ...(run.executor ? { executorScope: run.executor.scope } : {}),
-    checks: ['vitest run --maxWorkers=2 --minWorkers=1', 'eslint . --no-cache'],
+    checks: ['vitest run --maxWorkers=2 --no-file-parallelism', 'eslint . --no-cache'],
     dependencyIntentId: dependencies.intent.id, inventoryDigest: dependencies.receipt.inventoryDigest,
     toolchain: dependencies.intent.toolchain, implementation: files };
 }
