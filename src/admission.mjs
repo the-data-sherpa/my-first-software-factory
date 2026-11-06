@@ -166,6 +166,15 @@ export function createAdmissionExecution({ createRuntime, fetch, clock, fixture 
         try {
           save({ stage: 'prerequisites' }); // Intent precedes every gate effect.
           binding = await capture();
+          if (run.qualification) {
+            // Composed runs only: an admitted helper the qualifier cannot parse refuses
+            // before containment, ModelRuntime construction, or the smoke request.
+            // Loaded here so legacy admission never depends on qualification modules.
+            save({ binding, stage: 'helper-eligibility' });
+            const { verifyAdmittedHelper } = await import('./qualification-scope.mjs');
+            await verifyAdmittedHelper({ intent: run.workspace.intent, writePaths: run.executor?.scope?.writePaths });
+            active();
+          }
           save({ binding, stage: 'containment' });
           tools = await createRunTools({ ...input, signal: combined, dependencyBundle });
           if (tools.verification.sourceDigest !== binding.sourceDigest) fail('ADMISSION_INVALIDATED');

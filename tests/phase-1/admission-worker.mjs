@@ -14,6 +14,7 @@ import { inspectContainedChecks } from '../../src/containment.mjs';
 import { controlledRuntime, controlledTransport, eventsResponse } from './model-fixtures.mjs';
 import { until } from '../phase-0/helpers.mjs';
 import { vitestBaselineCli } from '../fixtures/vitest-baseline-cli.mjs';
+import { baseHelper } from '../fixtures/qualification-project.mjs';
 
 const [root, requested = 'success'] = process.argv.slice(2);
 const cli = requested.startsWith('cli-');
@@ -28,6 +29,12 @@ if (['between-checks','stop-check','deadline-check','shutdown-check','crash'].in
 ` });
 const stateDir = fixture.workspaceIntent.stateDir;
 const project = { id: 'vanguard', repositoryPath: fixture.repositoryPath };
+if (scenario === 'qualified-profile') {
+  // A composed run's admitted base contains the selected helper, which its early eligibility gate parses.
+  await mkdir(join(fixture.repositoryPath, 'convex'), { mode: 0o700 });
+  await writeFile(join(fixture.repositoryPath, 'convex/syncHelpers.ts'), baseHelper);
+  fixture.git('add', '.'); fixture.git('commit', '-m', 'selected helper for the composed profile');
+}
 if (scenario === 'hidden-source') {
   await mkdir(join(fixture.repositoryPath, 'config'), { mode: 0o700 });
   await writeFile(join(fixture.repositoryPath, 'config', '.env'), 'synthetic excluded fixture');
@@ -133,7 +140,8 @@ try {
   const bounded = ['tool-limit', 'model-limit', 'model-drain-report', 'qualified-profile'].includes(scenario) ? { ...wrapped, async start(input) {
     // Stands in for the application's opted-in composed run record; the profile alone is under test here.
     if (scenario === 'qualified-profile') return wrapped.start({ ...input,
-      run: { ...input.run, qualification: { version: 1, runId: input.run.id, kind: 'controlled-fixture', status: 'pending', reviewReady: false } },
+      run: { ...input.run, qualification: { version: 1, runId: input.run.id, kind: 'controlled-fixture', status: 'pending', reviewReady: false },
+        executor: { scope: { writePaths: ['convex/syncHelpers.ts', 'lib/__tests__/normalize-address.test.ts'] } } },
       saveAdmission: state => { composedStates.push(structuredClone(state)); input.saveAdmission(state); } });
     if (scenario === 'tool-limit') for (let i = 0; i < 28; i++) input.budget.settle(input.budget.reserveToolRound({ roundId: `prior:${i}` }).id, 'Controlled prior round in the original run.');
     if (scenario === 'model-limit') for (let i = 0; i < 40; i++) input.budget.settle(input.budget.reserveModelAttempt({ generationId: `prior:${i}` }).id, 'Controlled prior model allowance in the original run.');
