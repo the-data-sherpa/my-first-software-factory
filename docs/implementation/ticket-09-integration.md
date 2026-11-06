@@ -2,14 +2,20 @@
 
 ## Status
 
-This is local controlled implementation, not ticket #9 acceptance or Phase 1 completion.
-Frozen `9c44363` passed the complete 405-test suite and the existing 1-test browser regression. Independent Claude Code Opus 5.5 reviews and follow-up reviews have returned. The later runtime corrections passed targeted public-interface, application/CLI, composition, and qualifier rechecks at `31f5b9a`. This is not an entire-current-suite result. The owner-readiness coverage decision remains open.
+The owner accepted this local controlled #9 implementation checkpoint on 2026-11-06, not the live owner path or Phase 1 completion.
+Frozen `9c44363` passed the complete 405-test suite and the existing 1-test browser regression. Independent Claude Code Opus 5.5 reviews and follow-up reviews have returned. The later runtime corrections passed targeted public-interface, application/CLI, composition, and qualifier rechecks at `31f5b9a`. This is not an entire-current-suite result. The owner explicitly deferred positive owner-readiness coverage to separately authorized #10 work.
 No production-model request, credential read, Vanguard execution, download, push, tracker write, service, or publication was performed by this integration batch.
 The real owner/toolchain/provider path and ticket #10 still require separate authorization and acceptance.
 
 Base: `bc06be0`, the accepted shared-quality checkpoint. The earlier qualification modules were cherry-picked through `62a9720` for integration, not accepted by that act.
 The parallel implementation commits were C `0b9e1cc` → `82aa3d9`, D `37f9656` → `27662f2`, B `db3cabd` → `a958a4e`, and A `55dc285` → `df781ca`.
 Parent corrections and process tests supplement those streams. Their isolated reports are not combined acceptance.
+
+## Owner acceptance and next authority
+
+After the recorded verification and independent reviews, the owner approved option B: accept only the controlled #9 implementation checkpoint and defer positive owner-readiness proof, including stale-evidence downgrade, to #10. This resolves SP-S1 as an explicit coverage deferral, not a passing owner-path test. No data-only test seam, fabricated qualified receipt, or new runtime authority was added.
+The same approval permits a bounded read-only Vanguard compatibility preflight: selected helper and relevant tests, manifests/lockfiles, and tracked test/lint configuration. It does not permit target-code execution, credentials or `.env` access, package acquisition/installation, production-model calls, changes to Vanguard, tracker writes, or publication. The local engineering checkpoint is not domain Approval for a Proposal.
+Real local-main source admission, contained baseline/toolchain checks, model acceptance, positive owner readiness/invalidation, and the actual maintenance demonstration remain later gates with separately authorized operations.
 
 ## Implemented path
 
@@ -95,7 +101,7 @@ The child disclosed one evidence-mode correction: `runner-exit.txt` briefly had 
 Primary evidence: `/tmp/factory-t09-current-runtime-verify-qcpGzy/`, including `summary.md`, `run.sh`, each `cmdN-command.txt`, `cmdN-start.txt`, `cmdN-exit.txt`, `cmdN.log`, `runner-exit.txt`, scope journal/audit, and static outputs. Parent confirmation is in `final-review-corrections/current-runtime-parent-scope-audit.json` and `final-review-corrections/current-runtime-parent-checkout-audit.log` under the parent evidence directory.
 The verifier reported 123 syntax checks with no failures, clean range/working-tree whitespace, empty dependency/pin diffs, all six source/test hashes matching, and 94 local links across 35 Markdown files with no errors. Its changed-document prose scores were 0.80–2.15, with no banned-word hits. These static measurements are not content or runtime acceptance.
 
-This closes the selected changed-runtime verification gap, not SP-S1. The complete owner readiness path, actual Vitest/ESLint distributions, real base grammar/toolchain, provider credentials/caps/billing, Vanguard maintenance, #10, and Phase 1 completion remain unverified or separately authorized. The test owner did not perform Standards or Spec review. The documentation-only update recording these results changes no runtime or test file.
+This closes the selected changed-runtime verification gap. The later owner decision above explicitly defers SP-S1's positive coverage rather than claiming it was tested. The complete owner readiness path, actual Vitest/ESLint distributions, real base grammar/toolchain, provider credentials/caps/billing, Vanguard maintenance, #10, and Phase 1 completion remain unverified or separately authorized. The test owner did not perform Standards or Spec review. The documentation-only update recording these results changes no runtime or test file.
 
 ## Evidence-audit dispositions
 
@@ -126,8 +132,8 @@ The remaining read-only reports are `/tmp/factory-ticket09-standards-opus/report
 
 ### Spec
 
-- **SP-S1, medium, owner decision open:** controlled runs must never become review-ready. Positive owner readiness and its stale-evidence downgrade therefore remain unverified. The owner must either agree on a non-authorizing factory-owned presentation test seam or explicitly accept deferring that positive coverage to separately authorized #10 work. This record assumes neither decision. No fabricated qualified receipt supplies readiness proof.
-- **SP-S2, medium, unresolved real-target compatibility:** the real recorded base might not fit the helper grammar or the retained `baseActual` examples. The preconditions below are explicit. No real-target compatibility evidence exists yet.
+- **SP-S1, medium, explicitly deferred by owner:** controlled runs must never become review-ready. Positive owner readiness and its stale-evidence downgrade remain unverified. The owner chose option B on 2026-11-06, accepting only the controlled checkpoint and deferring that positive coverage to separately authorized #10 work. No fabricated qualified receipt supplies readiness proof.
+- **SP-S2, medium, unresolved real-target compatibility:** the real recorded base might not fit the helper grammar or the retained `baseActual` examples. The preconditions below are explicit. No executed real-target compatibility evidence exists yet. The owner has separately authorized read-only source inspection, not a maintenance attempt.
 - **SP-S3, low, deferred:** a mismatched explicit write scope still fails closed during qualification, not before the executor spends its allowance. Start-time rejection would improve feedback but is not implemented by this correction. Only the exact selected two-file scope is eligible.
 - **SP-S4, low, corrected at `ffd5566`:** the stale baseline-gap paragraph was removed and the old module record was marked historical. The frozen review did not cover that later documentation.
 - **SP-S5, advisory, retained:** the non-draft guard remains useful for standalone module callers, even though composition filters those outcomes earlier. A comment describes that distinction. The existing `incomplete` module case is relevant coverage, not composed-path success.
@@ -156,7 +162,7 @@ Both found no material new implementation defect and confirmed the six source/te
 The Spec recheck found one low documentation gap: this batch now also marks `ticket-09-parent-review.md` historical, preserving its earlier failures. It also clarified that the qualifier uses the application's remaining duration with global scheduling. The factory's own scheduler remains authoritative through its abort signal.
 The malformed-change-list summary advisory remains open: a non-array list displays zero summaries while separate inspection evidence reports its validity. No qualified authority follows from that summary. Historical owner Work item status remains a disclosed, untested owner-path advisory.
 The projection red predates insertion of the clock test. Its 65-versus-32 assertion was unchanged, but it is not evidence on the byte-for-byte final test file. The final hash manifest identifies the reviewed source, not every earlier red invocation.
-These documentation-only follow-ups do not alter the runtime or test files reviewed at `9d04c8f`. Parent static/link/prose checks cover them. The frozen full-verification result is now recorded separately above. The current-source composed-path recheck has now completed separately above. SP-S1 remains an unanswered owner decision.
+These documentation-only follow-ups do not alter the runtime or test files reviewed at `9d04c8f`. Parent static/link/prose checks cover them. The frozen full-verification result is now recorded separately above. The current-source composed-path recheck has now completed separately above. The later owner acceptance above resolves SP-S1 by explicit deferral, not by supplying positive readiness evidence.
 
 ## Preconditions before separately authorized #10 work
 
