@@ -110,6 +110,6 @@ export function createQualifiedRepositoryExecution(options = {}) {
       });
     },
     async resume() { throw failure('UNSAFE_RESUME'); },
-    assessRecovery: () => executor.assessRecovery(),
+    assessRecovery: input => executor.assessRecovery(input),
   });
 }

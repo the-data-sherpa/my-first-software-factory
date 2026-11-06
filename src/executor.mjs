@@ -1,13 +1,14 @@
 import { readFile } from 'node:fs/promises';
 import { FactoryError } from './storage.mjs';
-import { createAdmissionExecution, consumeAdmissionHandoff, verifyActivatedAdmission } from './admission.mjs';
+import { createAdmissionExecution, consumeAdmissionHandoff, verifyActivatedAdmission, verifyRecoveryAdmission } from './admission.mjs';
 import { validateExecutorScope } from './executor-policy.mjs';
-import { createExecutorArtifacts, digest } from './executor-artifacts.mjs';
+import { createExecutorArtifacts, digest, inspectExecutor } from './executor-artifacts.mjs';
 import { createExecutorTools, scopedSource } from './executor-tools.mjs';
 import { startExecutorModel } from './executor-model.mjs';
+import { captureRecoveryOwner, verifyRecoveryOwner } from './recovery-owner.mjs';
 
 export { validateExecutorScope } from './executor-policy.mjs';
-export { inspectExecutor } from './executor-artifacts.mjs';
+export { inspectExecutor };
 const handoffs = new WeakMap();
 const isDrain = error => ['DRAIN_FAILED', 'MODEL_DRAIN_FAILED'].includes(error?.code);
 const failure = code => new FactoryError(code, 'Inspect the private executor evidence and retained draft. No readiness or safe replay is established.');
@@ -44,6 +45,14 @@ export function createRepositoryExecution(options = {}) {
       });
       const qualityPolicy = { source: 'docs/agents/change-quality.md', sha256: digest(qualityText), text: qualityText };
       budget.assertActive();
+      // Only prospective composed executions gain retirement evidence. It is saved
+      // before admission can create a runtime, verify tools, or dispatch a request.
+      if (run.qualification) {
+        const recoveryOwner = await captureRecoveryOwner({ run, directory });
+        const saved = saveExecutor({ ...run.executor, recoveryOwner });
+        if (saved?.then) throw failure('EXECUTOR_PERSISTENCE');
+        run.executor.recoveryOwner = recoveryOwner;
+      }
       const shutdown = new AbortController();
       const combined = AbortSignal.any([signal, budget.signal, shutdown.signal]);
       input.signal = combined;
@@ -95,7 +104,7 @@ export function createRepositoryExecution(options = {}) {
       const finished = (async () => {
         try {
           await journal({ type: 'intent', runId, requestId, kind, scope, brief: input.brief, source: run.workspace.intent.sourceManifest,
-            limits: run.limits, deadlineAt: budget.deadlineAt, qualityPolicy });
+            limits: run.limits, deadlineAt: budget.deadlineAt, qualityPolicy, recoveryOwnerId: run.executor.recoveryOwner?.id });
           save({ stage: 'admission' });
           admitted = await admission.start(input);
           const outcome = await admitted.finished;
@@ -189,7 +198,21 @@ export function createRepositoryExecution(options = {}) {
       });
     },
     async resume() { throw failure('UNSAFE_RESUME'); },
-    async assessRecovery() { return { kind: 'repository-executor', quiescent: false, resumable: false,
-      evidence: 'Interrupted models and file mutations require external reconciliation. Inspection and duplicate requests never open a scheduler or repeat work.' }; },
+    async assessRecovery(input) {
+      const refused = { kind: 'repository-executor', quiescent: false, resumable: false,
+        evidence: 'Whole original scope extinction and retained ownership are unconfirmed. No reconciliation or replay was attempted.' };
+      try {
+        if (!input?.run?.qualification || input.run.executor?.kind !== kind || input.run.admission?.kind !== kind) return refused;
+        const retained = await inspectExecutor(input);
+        if (!retained.events?.length || retained.operations.some(operation => !['read_file', 'write_file', 'run_check'].includes(operation.tool))) return refused;
+        const proof = await verifyRecoveryOwner(input);
+        await verifyRecoveryAdmission(input.run, input.dependencyRun);
+        await scopedSource(input.run, validateExecutorScope(input.run.executor.scope));
+        // Scope extinction must remain true after artifact validation.
+        await verifyRecoveryOwner(input);
+        return { kind: 'contained-local-draft', quiescent: true, resumable: false, proof,
+          evidence: 'The original local owner and whole recorded scope are extinct. Partial draft and uncertain remote usage remain quarantined; no remote cancellation, refund, or replay safety is claimed.' };
+      } catch { return refused; }
+    },
   });
 }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile, writeFile, access } from 'node:fs/promises';
 import { writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { openFactory } from '../../src/factory.mjs';
 import { admitWorkspace, prepareWorkspace } from '../../src/workspace.mjs';
@@ -11,9 +12,9 @@ import { qualifiedExecutorReply, scope, helperPath, testPath } from '../fixtures
 import { controlledRuntime, controlledTransport } from './model-fixtures.mjs';
 import { until } from '../phase-0/helpers.mjs';
 
-const [root, scenario] = process.argv.slice(2);
+const [root, scenario, stateDirectory] = process.argv.slice(2);
 globalThis.fetch = async () => { throw new Error('Uncontrolled network forbidden'); };
-const fixture = await qualificationProject(root, scenario === 'drain-report' ? 'slow' : 'green');
+const fixture = await qualificationProject(root, scenario === 'drain-report' ? 'slow' : 'green', { stateDir: stateDirectory });
 const stateDir = fixture.workspaceIntent.stateDir;
 const project = { id: 'vanguard', repositoryPath: fixture.repositoryPath };
 const workspace = { admit: admitWorkspace, prepare: prepareWorkspace };
@@ -40,8 +41,20 @@ assert.equal(initialized, 0, 'Construction is passive.');
 const saved = []; let handle; let receipt; let runId; let stopping; let fault; let scheduled = false;
 const execution = { ...qualified, async start(input) {
   runId = input.runId;
+  if (scenario === 'replacement-crash') writeFileSync(join(root, 'application-input.json'),
+    JSON.stringify({ stateDir, project, runId, brief, scope, dependencyRunId: prep.id }), { mode: 0o600 });
   assert.deepEqual(input.run.qualification, { version: 1, runId: input.runId, kind: qualified.admissionKind, status: 'pending', reviewReady: false });
-  handle = await qualified.start({ ...input,
+  const budget = scenario === 'replacement-crash' ? { ...input.budget, settle(id, evidence, accounting) {
+    if (evidence.startsWith('{') && JSON.parse(evidence).kind === 'write') {
+      // A trusted fixture descendant survives backend death in the original scope.
+      // It has no repository access or work; replacement must still wait for drainage.
+      const survivor = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+      writeFileSync(join(root, 'survivor.json'), JSON.stringify({ pid: survivor.pid }), { mode: 0o600 });
+      process.kill(process.pid, 'SIGKILL');
+    }
+    return input.budget.settle(id, evidence, accounting);
+  } } : input.budget;
+  handle = await qualified.start({ ...input, budget,
     saveExecutor(state) {
       input.saveExecutor(state);
       if (scenario === 'stop-before-qualification' && state.stage === 'complete' && state.status === 'draft-produced') stopping = factory.stopRun(input.runId);
