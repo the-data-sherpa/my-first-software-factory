@@ -37,8 +37,8 @@ export function candidateTest(scenario) {
   if (scenario === 'candidate-valid-literal') return draftTest + "test('extra literal is not a source-string veto', () => expect(1).toBe(1));\n";
   return draftTest;
 }
-export async function qualificationProject(root, scenario) {
-  const fixture = await dependencyFixture(root, { copyToolchain: true });
+export async function qualificationProject(root, scenario, { stateDir } = {}) {
+  const fixture = await dependencyFixture(root, { copyToolchain: true, ...(stateDir ? { stateDir } : {}) });
   const repo = fixture.repositoryPath;
   const manifest = JSON.parse(await readFile(`${repo}/package.json`, 'utf8'));
   await writeFile(`${repo}/package.json`, JSON.stringify({ ...manifest, type: 'module' }));
