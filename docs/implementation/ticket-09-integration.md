@@ -3,7 +3,7 @@
 ## Status
 
 This is local controlled implementation, not ticket #9 acceptance or Phase 1 completion.
-Final combined verification is pending. Independent Claude Code Opus 5.5 Standards, Spec, lifecycle, and evidence reviews at frozen `9c44363` have returned. Their follow-up changes need revision-specific rechecks.
+Frozen `9c44363` passed the complete 405-test suite and the existing 1-test browser regression. Independent Claude Code Opus 5.5 reviews and follow-up reviews have returned. The later runtime corrections still need a targeted composed-path recheck, and the owner-readiness coverage decision remains open.
 No production-model request, credential read, Vanguard execution, download, push, tracker write, service, or publication was performed by this integration batch.
 The real owner/toolchain/provider path and ticket #10 still require separate authorization and acceptance.
 
@@ -58,8 +58,22 @@ These are controlled transport/package/OS fixtures, not production runner or mod
 - `cancel-red.log` → `postjoin.log`: late cancellation incorrectly finalized before its promise settled, then remained active and rejected a second start until cancellation joined. The post-correction selection passed 5/5, including missing-module admission, stop-finalization, deadline-finalization, and persistence-failure paths. `admission-profile.log` passed the actual profile case; `pool-pin.log` passed the positive fork-pool override case.
 - `unknown-cleanup-red.log` → `unknown-cleanup-green.log`: an unexpected qualifier-close rejection in a disposable factory copy was incorrectly ignored and created a Work item. After correction, it fences the backend and creates none, while an ordinary reporting failure remains an unfenced failed outcome. Both cases passed, as did the separate sticky namespace drain/reporting recheck (`drain-recheck.log`).
 
-Relevant changes make earlier coverage stale. The frozen combined suite must re-execute the final source. Focused tests cover the corrected missing-module fixture and actual admission-profile case, but do not replace the full suite.
+Relevant changes make affected earlier coverage stale. The complete suite below verifies `9c44363`, not the later runtime corrections. Focused tests and the later 51-case public-interface recheck do not automatically carry the full result forward. A current-source composed-path recheck remains required.
 Independent Standards, Spec, and safety coverage must distinguish examined evidence from missing real-runner/owner coverage.
+
+## Completed frozen verification
+
+The sole complete-verification owner tested `9c44363bb5d0ebb126bef4527cedf112d34e1525` against base `bc06be0`. Its final continuation completed with no pending child work. The parent read the actual exit records and full logs, rather than treating the earlier background-start summary as completion.
+
+- `npm test` ran once, unchanged and serial, from `2026-11-06T07:19:09-05:00` to `2026-11-06T08:06:54-05:00`. It exited **0**, with **405 passed, 0 failed, 0 cancelled, 0 skipped, 0 todo**. These totals come from Node's default spec reporter, not TAP lines. The log contains no reported quota or SQLite I/O failure.
+- `CHROMIUM_PATH=/usr/bin/chromium npm run test:ui` ran once and exited **0**, with **1 passed, 0 failed, 0 skipped**. This is the existing Phase 0 polling regression, not a #9 UI.
+- The verifier reported syntax checks for 123 tracked JavaScript files, clean range/working-tree whitespace, and 91 local links across 35 Markdown files. Dependency/pin diffs against `bc06be0` were empty. Prose scores are diagnostic measurements, not content acceptance: strict policy scores were 0–1.47, changed-document scores 0.75–3.02, with zero banned-word hits.
+- The child audit and the parent's independent audit each found **267 unique recorded scopes**, all inactive and empty, with no survivors or remaining processes. These are the same scopes checked twice, not 534 scopes. No cleanup signals or root-cgroup reads were needed.
+- The parent confirmed the frozen checkout remained clean at `9c44363`, its own temporary dependency link was absent, and the parent's dependency directory remained present. The report's claim that the parent checkout was also at `9c44363` was stale metadata: the parent was at `4351b10`. The harness was byte-identical in both checkouts, SHA256 `bd183bbd3e23ffa1af985d8e6d65c83861c8b822a6a9f7b8d2334e78b450a86c`, so the audit used unchanged code.
+
+Primary evidence: `/tmp/factory-t09-final-verify-LQSVjt/`, including `full-test.log`, `full-start.txt`, `full-exit.txt`, `ui-test.log`, `ui-exit.txt`, the journal/audit, and static-check files. Parent confirmation is in `final-review-corrections/frozen-full-parent-scope-audit.json` and `final-review-corrections/frozen-full-checkout-audit.log` under the parent evidence directory.
+The verifier did not independently measure filesystem fixture-root cleanup. Stable `/tmp` usage and disabled retention flags do not prove that every temporary root was removed. Scope drainage is the separately audited claim.
+No failure, exclusion, rerun, timeout increase, installation, or production operation is hidden in these totals. Controlled synthetic reporter/package fixtures and finite address examples remain the tested scope. This result is not #9 acceptance, live owner/toolchain/provider acceptance, #10, Phase 1 completion, or permission to publish.
 
 ## Evidence-audit dispositions
 
@@ -98,7 +112,7 @@ The remaining read-only reports are `/tmp/factory-ticket09-standards-opus/report
 
 ### Lifecycle and trust boundaries
 
-- **LC-A1, advisory, hypothesis not established:** the existing comment says worker threads share the descriptor, not that every fork configuration prevents inheritance. Standards reported `EBADF` for a plain Node fork, contradicting the unexecuted blanket inheritance hypothesis. Actual Vitest worker spawning remains unverified. The forks pin remains a precaution, not universal report-forgery protection.
+- **LC-A1, advisory, hypothesis not established:** the existing comment says worker threads share the descriptor, not that every fork configuration prevents inheritance. Standards reported `EBADF` for a plain Node fork, contradicting the unexecuted blanket inheritance hypothesis. Actual Vitest worker spawning remains unverified. The forks pin remains a precaution, not universal report-forgery protection. The baseline record now names the plain-Node probe rather than claiming that every fork configuration prevents descriptor access.
 - **LC-A2, advisory, deferred:** the helper parser can accept a line terminator after `return`, including inside a block comment. JavaScript automatic semicolon insertion then returns `undefined`. The independent oracle refuses the result. This is a refusal-only parser divergence, not supported semantics or a proven qualification bypass. A future correction must retain behavioral evidence through the agreed execution seam.
 - **LC-A3, advisory, deferred:** admission currently supplies and binds the composed implementation set. Duplicating that requirement inside the qualifier is optional hardening; no missing-set route was established.
 - **LC-A4, real-target gap:** the final suite rejects skipped/todo cases. Real-suite compatibility remains a precondition below.
@@ -110,7 +124,7 @@ The remaining read-only reports are `/tmp/factory-ticket09-standards-opus/report
 `/tmp/factory-ticket09-integration-parent/final-review-corrections/` retains the checks. `projection-red.log` reproduced all 65 summaries escaping the public projection. `clock-behavioral-red.log` reproduced false `RUN_STOPPING` with the original wall-clock timer. `clock-green.log` reached the intended controlled refusal after correction.
 The first clock test used a stale pre-dispatch executor projection. It failed before its handoff boundary even after the timer change. `clock-red.log`, the 18/19 `application-final-green.log`, and `clock-fixture-diagnosis.log` retain that fixture problem. They are not the final clock regression proof.
 `public-seams-green.log` passed **51/51** factory, qualification-application, and recovery cases, with no skips. The scope audit covers all three recorded process-death units from the light application rechecks. Each was inactive and empty.
-These checks do not replace the still-pending frozen full suite, browser result, or a subsequent actual composed-path recheck. No heavy package fixture was run alongside the full verifier for these corrections.
+At that correction checkpoint the frozen full suite and browser result were still pending. Their completed results above do not replace a subsequent actual composed-path recheck of the changed runtime. No heavy package fixture ran alongside the full verifier for these corrections.
 
 ### Follow-up Opus rechecks
 
@@ -120,7 +134,7 @@ Both found no material new implementation defect and confirmed the six source/te
 The Spec recheck found one low documentation gap: this batch now also marks `ticket-09-parent-review.md` historical, preserving its earlier failures. It also clarified that the qualifier uses the application's remaining duration with global scheduling. The factory's own scheduler remains authoritative through its abort signal.
 The malformed-change-list summary advisory remains open: a non-array list displays zero summaries while separate inspection evidence reports its validity. No qualified authority follows from that summary. Historical owner Work item status remains a disclosed, untested owner-path advisory.
 The projection red predates insertion of the clock test. Its 65-versus-32 assertion was unchanged, but it is not evidence on the byte-for-byte final test file. The final hash manifest identifies the reviewed source, not every earlier red invocation.
-These documentation-only follow-ups do not alter the runtime or test files reviewed at `9d04c8f`. Parent static/link/prose checks cover them. The original full verifier and the SP-S1 owner decision remain outstanding.
+These documentation-only follow-ups do not alter the runtime or test files reviewed at `9d04c8f`. Parent static/link/prose checks cover them. The frozen full-verification result is now recorded separately above. The current-source composed-path recheck and SP-S1 owner decision remain outstanding.
 
 ## Preconditions before separately authorized #10 work
 

@@ -20,18 +20,18 @@ The executed argv and the profile descriptor change together:
 - Profile `checks[0]`: `vitest run --maxWorkers=2 --no-file-parallelism`.
 
 `run` keeps watch mode disabled.
-`--no-file-parallelism` runs test files serially; the retained `config.ts` states that this overrides `maxWorkers` to 1.
+`--no-file-parallelism` runs test files serially. The retained `config.ts` states that this overrides `maxWorkers` to 1.
 `--maxWorkers=2` keeps the original ceiling of two workers.
 This matches the runtime the qualifier already requires: `maxWorkers: 1`, `fileParallelism: false`.
 Resource limits, timeouts and the lint check are unchanged. The qualifier's reporter command changes only as described below.
 
 ## Qualification pool pin
 
-Adversarial review (stream E, F4) observed that the qualifier's report descriptor (fd 6) cannot be written from forked children but can be written from worker threads.
+Stream E's controlled Node probe reported `EBADF` for fd 6 in a plain forked child, while a worker thread could write to that descriptor. It did not exercise Vitest's actual worker-spawning configuration.
 The final qualification suite keeps the repository configuration, which may select `pool: 'threads'`.
-As a precaution, every qualification command now passes `--pool=forks`; the retained `cli-config.ts` documents `--pool <pool>` (default `forks`), and CLI options override the configuration file.
+Every qualification command now passes `--pool=forks` as a precaution. The retained `cli-config.ts` documents `--pool <pool>` (default `forks`). CLI options override the configuration file.
 The baseline `vitest` check does not use the report descriptor and keeps its argv.
-This is not an end-to-end proof that forged frames are rejected; reporter validation of the resolved pool belongs to the qualifier.
+This is not an end-to-end proof that forged frames are rejected. Reporter validation of the resolved pool belongs to the qualifier.
 
 ## Profile changes
 

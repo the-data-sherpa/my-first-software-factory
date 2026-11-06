@@ -138,4 +138,4 @@ The qualifier now reports persistence failures through `finished` and uses `clos
 Controlled process checks now cover a real executor-produced Work item, new retained test, online/offline equality, late-edit invalidation, stops during qualification/finalization, original-deadline expiry after execution closes, actual process death during a check and after the qualified projection, no-change, and model refusal.
 The parent also keeps the deadline timer through finalization and rechecks the clock before saving the Work item.
 
-These corrections do not replace the final combined suite and independent review. Real owner/toolchain/provider acceptance and ticket #10 remain unverified and separately authorized.
+The [integration record](ticket-09-integration.md) separates the completed 405-test frozen suite and independent reviews from the later corrections that still need a targeted composed-path recheck. Owner-readiness coverage remains an open decision. Real owner/toolchain/provider acceptance and ticket #10 remain unverified and separately authorized.
