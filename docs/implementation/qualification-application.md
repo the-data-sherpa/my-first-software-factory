@@ -90,7 +90,9 @@ Incomplete outcomes keep the run's actual draft and evidence without a Work item
 ## Passive projection
 
 `inspectRun` and `inspectHistory({ runId })` run passive qualifier inspection against the stored, unobserved record.
-They add `qualificationEvidence` and replace `qualification` in the returned copy with a bounded summary: no check logs, reports, or inventories. The stored snapshot is never changed.
+They add `qualificationEvidence` and replace `qualification` in the returned copy with a bounded summary: no check logs, reports, or inventories.
+`capture.changes` exposes at most 32 entries, with `changeCount` and `changesTruncated` describing the complete private change list. This also bounds rejected drafts, before the qualifier accepts their two-file scope.
+The stored snapshot and complete private patch are never truncated.
 
 - No `qualification/` directory: `not-started`, `missing`.
 - A directory without `state.json`: `interrupted`, `incomplete`.

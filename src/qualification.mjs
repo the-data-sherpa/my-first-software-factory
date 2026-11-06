@@ -156,7 +156,7 @@ export function createDraftQualification({ verifyDraft } = {}) {
         try {
           await persist({}); // Saved selection and stage intent before capture/check effects.
           active();
-          timer = setTimeout(() => shutdown.abort(), Math.max(0, budget.deadlineAt - Date.now()));
+          timer = setTimeout(() => shutdown.abort(), budget.remainingMs);
           reservations.set('capture', budget.reserveToolRound({ roundId: 'qualification:capture' }));
           await persist({ stage: 'capture' });
           active(); dispatched.add('capture');
@@ -164,6 +164,7 @@ export function createDraftQualification({ verifyDraft } = {}) {
           budget.settle(reservations.get('capture').id, JSON.stringify({ patchDigest: capture.patchDigest }));
           await persist({ capture, artifacts: { directory: 'qualification', patch: 'qualification/patch.json', complete: true } });
           active();
+          // Composition filters non-drafts earlier; module callers still need this refusal.
           if (run.executor?.status && run.executor.status !== 'draft-produced') {
             const status = ['failed', 'stopped', 'interrupted'].includes(run.executor.status) ? run.executor.status
               : run.executor.status === 'no-change' && !capture.changes.length ? 'no-change' : 'blocked';

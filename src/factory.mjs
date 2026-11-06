@@ -75,9 +75,11 @@ function applyReceipt(record, receipt, { passive = false } = {}) {
     if (passive || uncertainTools) {
       record.status = 'interrupted';
       record.outcome = { kind: 'uncertain', reviewReady: false, reason: 'executor_reconciliation_required' };
-    } else if (record.qualification && applyQualificationReceipt(record, receipt)) {
-      // Opted-in composed runs use only the persisted, matching qualification verdict.
-    } else if (['draft-produced', 'no-change'].includes(receipt.status)) {
+      return record;
+    }
+    // Opted-in composed runs use only the persisted, matching qualification verdict.
+    if (record.qualification && applyQualificationReceipt(record, receipt)) return record;
+    if (['draft-produced', 'no-change'].includes(receipt.status)) {
       record.status = 'completed';
       record.outcome = { kind: receipt.status, reviewReady: false,
         reason: receipt.status === 'draft-produced' ? 'QUALIFICATION_REQUIRED' : 'NO_CHANGE' };

@@ -202,7 +202,11 @@ test('the live original deadline cancels and drains the current request and bloc
   const run = await factory.startRun({ requestId: 'live-deadline', brief });
   await until(() => factory.inspectRun(run.id), (item) => Boolean(item.execution.submissionId));
   assert.equal(run.deadlineAt, 1201000);
+  assert.equal(budget.remainingMs, 1_200_000);
+  now = 1200000;
+  assert.equal(budget.remainingMs, 1000);
   now = 1201000;
+  assert.equal(budget.remainingMs, 0);
   assert.throws(() => budget.reserveModelAttempt({ generationId: 'too-late' }), { code: 'RUN_DEADLINE' });
   deadline();
   const failed = await until(() => factory.inspectRun(run.id), (item) => item.status === 'failed');

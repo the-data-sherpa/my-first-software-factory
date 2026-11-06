@@ -50,6 +50,7 @@ export function executionBudget({ get, save, now, signal }) {
   }
   return Object.freeze({
     get deadlineAt() { return get().deadlineAt; },
+    get remainingMs() { return Math.max(0, get().deadlineAt - now()); },
     signal,
     assertActive() { current(); },
     modelAttempts() { return structuredClone(get().reservations?.filter((item) => item.kind === 'model') ?? []); },

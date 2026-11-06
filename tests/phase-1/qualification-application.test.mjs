@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openFactory, inspectHistory } from '../../src/factory.mjs';
+import { createDraftQualification } from '../../src/qualification.mjs';
 import { fixture } from './workspace-fixture.mjs';
 import { runOwnedScope } from '../fixtures/containment-harness.mjs';
 import { until } from '../phase-0/helpers.mjs';
@@ -90,6 +91,58 @@ test('opted-in runs start with an immutable pending snapshot and validate every 
   assert.equal(done.qualification.status, 'blocked');
   assert.equal(done.workItem, undefined);
   assert.equal(states.length, 1);
+});
+
+test('qualification uses the application clock for its original deadline during capture', async t => {
+  const f = await fixture(t);
+  let reachedHandoff = false;
+  const execution = composed({ async run(input) {
+    const qualifier = createDraftQualification({ verifyDraft() {
+      reachedHandoff = true;
+      throw Object.assign(new Error('Controlled handoff refusal; no qualifying authority supplied.'), { code: 'CONTROLLED_HANDOFF_REFUSAL' });
+    } });
+    // Mirror the controlled adapter's saved draft projection, not the pre-dispatch snapshot.
+    // The handoff callback always refuses; this cannot establish qualified evidence.
+    const run = { ...input.run, executor: { ...input.run.executor, status: 'draft-produced' } };
+    const handle = await qualifier.start({ ...input, run });
+    try { return receiptFor(input, await handle.finished); } finally { await handle.close(); }
+  } });
+  const clock = { now: () => 1000, setTimeout, clearTimeout };
+  const factory = await openFactory({ stateDir: f.stateDir, project: f.project, workspace, execution, clock });
+  t.after(() => factory.close());
+  const admitted = await factory.startRun({ requestId: 'clock-domain', brief, dependencyRunId, scope });
+  const done = await until(() => factory.inspectRun(admitted.id), terminal);
+  assert.equal(done.deadlineAt, 1_201_000);
+  assert.equal(reachedHandoff, true, `An active original budget must reach the handoff boundary: ${JSON.stringify({ outcome: done.outcome, stage: done.qualification.stage })}`);
+  assert.deepEqual(done.outcome, { kind: 'blocked', reviewReady: false, reason: 'CONTROLLED_HANDOFF_REFUSAL' });
+  assert.equal(done.workItem, undefined);
+});
+
+test('qualification inspection bounds rejected change summaries without truncating private evidence', async t => {
+  const changes = Array.from({ length: 65 }, (_, index) => ({ path: `unexpected/${index}.ts`, operation: 'add', afterMode: 0 }));
+  const { done, factory, stateDir, admitted } = await finish(t, async input => {
+    const verdict = { status: 'blocked', reason: 'QUALIFICATION_SCOPE', runId: input.runId, kind: 'controlled-fixture', reviewReady: false };
+    const state = fabricatedQualified(input.runId);
+    state.status = 'blocked'; state.verdict = verdict;
+    state.capture.changes = changes;
+    await writeState(input.directory, state);
+    input.saveQualification(state);
+    return receiptFor(input, verdict);
+  });
+  assert.equal(done.status, 'blocked');
+  assert.equal(done.outcome.reviewReady, false);
+  assert.equal(done.workItem, undefined);
+  assert.deepEqual(done.qualification.capture.changes, changes.slice(0, 32));
+  assert.equal(done.qualification.capture.changeCount, changes.length);
+  assert.equal(done.qualification.capture.changesTruncated, true);
+  const [listed] = await factory.listRuns();
+  assert.deepEqual(listed.qualification.capture, done.qualification.capture);
+  const privateState = JSON.parse(await readFile(join(stateDir, 'runs', admitted.id, 'qualification', 'state.json'), 'utf8'));
+  assert.deepEqual(privateState.capture.changes, changes);
+  await factory.close();
+  const before = await readFile(join(stateDir, 'factory.sqlite'));
+  assert.deepEqual(await inspectHistory({ stateDir, runId: admitted.id }), done);
+  assert.deepEqual(await readFile(join(stateDir, 'factory.sqlite')), before);
 });
 
 for (const [name, plan, expected] of [

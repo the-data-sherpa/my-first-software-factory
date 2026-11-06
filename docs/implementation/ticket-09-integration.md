@@ -3,7 +3,7 @@
 ## Status
 
 This is local controlled implementation, not ticket #9 acceptance or Phase 1 completion.
-Final combined verification and fresh independent Claude Code Opus 5.5 review are pending.
+Final combined verification is pending. Independent Claude Code Opus 5.5 Standards, Spec, lifecycle, and evidence reviews at frozen `9c44363` have returned. Their follow-up changes need revision-specific rechecks.
 No production-model request, credential read, Vanguard execution, download, push, tracker write, service, or publication was performed by this integration batch.
 The real owner/toolchain/provider path and ticket #10 still require separate authorization and acceptance.
 
@@ -71,8 +71,58 @@ The independent read-only evidence/operator audit examined `9c44363` against `bc
 - **EA4, low:** described the initial log's actual invalidation code instead of claiming that the log itself identifies the policy-key cause.
 - **EA5, low advisory:** documented that Work item `status` is the historical creation outcome. Current readiness requires the projected readiness/freshness and validated evidence, not that status alone. No new positive owner-path claim or test authority was introduced.
 
-The full verification and other independent reviews remain targeted at frozen `9c44363`; these follow-up changes alter documentation and one diagnostic string, not recovery or execution gates. Their relevant checks are retained separately under `/tmp/factory-ticket09-integration-parent/evidence-audit-corrections/`: the diagnostic regression failed before the wording correction, then all 17 application cases passed with no skips. Syntax, whitespace, local links, and prose checks passed. The one recorded process-death scope was inactive and empty.
+The full verifier and four completed read-only reviews targeted frozen `9c44363`. The evidence-audit follow-up `ffd5566` changed documentation and one diagnostic string, not recovery or execution gates.
+Its checks remain under `/tmp/factory-ticket09-integration-parent/evidence-audit-corrections/`. The diagnostic regression failed before the wording correction, then all 17 application cases passed with no skips. Syntax, whitespace, local links, and prose checks passed. The one recorded process-death scope was inactive and empty.
+The later runtime corrections below have their own evidence boundary.
 The audit could not attribute three checks to separate scope journals. The parent used shared per-stream journals: `postjoin-scopes.jsonl` covers the five post-join cases plus admission-profile and pool-pin; `unknown-cleanup-scopes.jsonl` covers its red case, two corrected cases, and drain-recheck. Attribution relies on recorded invocation order, not a scenario field in each journal row. Their aggregate audits confirm every recorded unit inactive and empty.
+
+## Frozen final-review dispositions
+
+The remaining read-only reports are `/tmp/factory-ticket09-standards-opus/report.md`, `/tmp/factory-ticket09-spec-review-opus/report.md`, and `/tmp/factory-ticket09-opus-safety-review/report.md`. They examined frozen `9c44363` against `bc06be0`, not the subsequent corrections. Standards reported one file-free Node descriptor probe. Spec and lifecycle ran no checks. None verified the full suite or accepted ticket #9.
+
+### Standards
+
+- **ST-S1, low, corrected:** qualification used wall-clock time against an application-clock deadline. The trusted budget now exposes its remaining original duration. A public application test with clock `1000` reached a controlled handoff refusal after the correction instead of falsely stopping during capture. This supplies no qualified authority or owner-readiness proof.
+- **ST-S2, advisory, deferred:** stage lists, limit classifications, and report caps have some duplication. Their current values agree. Consolidation is not required to correct the observed behavior. The standalone sandbox reporter also needs its own cap. This remains a maintainability judgment, not a verified defect.
+- **ST-S3, advisory, deferred:** the admission and qualification hash lists serve different scopes and remain fixed reviewed sets. No claim covers every transitive module or automatic discovery of future files.
+- **ST-S4, advisory, corrected:** qualification receipt handling now uses explicit control flow and an early return instead of an empty side-effecting conditional branch.
+- **ST-S5, low advisory, corrected in the public projection:** rejected captures now expose at most 32 change summaries, their total count, and a truncation flag. Full private artifacts and saved inventories remain complete. Durable inventory storage remains unchanged.
+
+### Spec
+
+- **SP-S1, medium, owner decision open:** controlled runs must never become review-ready. Positive owner readiness and its stale-evidence downgrade therefore remain unverified. The owner must either agree on a non-authorizing factory-owned presentation test seam or explicitly accept deferring that positive coverage to separately authorized #10 work. This record assumes neither decision. No fabricated qualified receipt supplies readiness proof.
+- **SP-S2, medium, unresolved real-target compatibility:** the real recorded base might not fit the helper grammar or the retained `baseActual` examples. The preconditions below are explicit. No real-target compatibility evidence exists yet.
+- **SP-S3, low, deferred:** a mismatched explicit write scope still fails closed during qualification, not before the executor spends its allowance. Start-time rejection would improve feedback but is not implemented by this correction. Only the exact selected two-file scope is eligible.
+- **SP-S4, low, corrected at `ffd5566`:** the stale baseline-gap paragraph was removed and the old module record was marked historical. The frozen review did not cover that later documentation.
+- **SP-S5, advisory, retained:** the non-draft guard remains useful for standalone module callers, even though composition filters those outcomes earlier. A comment describes that distinction. The existing `incomplete` module case is relevant coverage, not composed-path success.
+
+### Lifecycle and trust boundaries
+
+- **LC-A1, advisory, hypothesis not established:** the existing comment says worker threads share the descriptor, not that every fork configuration prevents inheritance. Standards reported `EBADF` for a plain Node fork, contradicting the unexecuted blanket inheritance hypothesis. Actual Vitest worker spawning remains unverified. The forks pin remains a precaution, not universal report-forgery protection.
+- **LC-A2, advisory, deferred:** the helper parser can accept a line terminator after `return`, including inside a block comment. JavaScript automatic semicolon insertion then returns `undefined`. The independent oracle refuses the result. This is a refusal-only parser divergence, not supported semantics or a proven qualification bypass. A future correction must retain behavioral evidence through the agreed execution seam.
+- **LC-A3, advisory, deferred:** admission currently supplies and binds the composed implementation set. Duplicating that requirement inside the qualifier is optional hardening; no missing-set route was established.
+- **LC-A4, real-target gap:** the final suite rejects skipped/todo cases. Real-suite compatibility remains a precondition below.
+- **LC-A5, advisory, documented:** unfamiliar *close* rejection fences ownership. The application records a late cancellation rejection as `cancellationError` after close already confirmed drainage. This does not claim that every cancel error creates a new drainage fence. The review found no real post-close drain regression.
+- **LC-A6:** the public change-list cap is the same correction as ST-S5. It does not truncate private patch evidence.
+
+### Correction evidence and revision boundary
+
+`/tmp/factory-ticket09-integration-parent/final-review-corrections/` retains the checks. `projection-red.log` reproduced all 65 summaries escaping the public projection. `clock-behavioral-red.log` reproduced false `RUN_STOPPING` with the original wall-clock timer. `clock-green.log` reached the intended controlled refusal after correction.
+The first clock test used a stale pre-dispatch executor projection. It failed before its handoff boundary even after the timer change. `clock-red.log`, the 18/19 `application-final-green.log`, and `clock-fixture-diagnosis.log` retain that fixture problem. They are not the final clock regression proof.
+`public-seams-green.log` passed **51/51** factory, qualification-application, and recovery cases, with no skips. The scope audit covers all three recorded process-death units from the light application rechecks. Each was inactive and empty.
+These checks do not replace the still-pending frozen full suite, browser result, or a subsequent actual composed-path recheck. No heavy package fixture was run alongside the full verifier for these corrections.
+
+## Preconditions before separately authorized #10 work
+
+Before a real maintenance attempt, separately authorize and establish all of the following:
+
+- The actual recorded base helper fits the supported declaration and body grammar, not only the synthetic fixture. Its executed outputs match the selected defect's retained `baseActual` examples. An incompatibility requires a scoped correction or a new task decision before model drafting, not a weakened parser or substituted success.
+- The real pinned Vitest/ESLint distributions and dependency preparation work within the unchanged containment, command, worker, deadline, and output limits. Synthetic reporter events and Node fork probes do not establish this.
+- The real full suite is compatible with the refusal of skipped/todo or incomplete report cases. Any change to that policy needs an explicit decision. No skip is silently accepted.
+- The explicit write scope is exactly `convex/syncHelpers.ts` and `lib/__tests__/normalize-address.test.ts`. Generic start validation does not yet enforce this selected-task pair before execution.
+- Positive owner readiness and its invalidation have the coverage chosen for SP-S1. Provider access, credentials, billing/caps, real Vanguard reads/execution, and any downloads still need their own authorization.
+
+This section is a gate and a disclosure, not permission to perform those operations or a new implemented pre-admission command.
 
 ## Evidence handling and limits
 

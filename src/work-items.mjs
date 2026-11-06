@@ -10,6 +10,7 @@ import { inspectExecutor, validateExecutorScope } from './execution.mjs';
 // the run outcome and its Work item come from passive revalidation of the
 // retained private artifacts after the composed execution fully drained.
 
+const MAX_CHANGE_SUMMARIES = 32;
 const STAGES = ['base-boundary', 'runner-probe', 'base-regression', 'candidate-base-boundary', 'candidate-base-regression',
   'draft-boundary', 'draft-regression', 'draft-candidate', 'vitest', 'lint'];
 const VERDICTS = ['qualified', 'no-change', 'blocked', 'failed', 'stopped', 'interrupted'];
@@ -162,11 +163,13 @@ export async function finalizeQualifiedRun({ run, directory, dependencyRun, now 
 /** Bounded public projection. Full logs, reports, and inventories stay in private artifacts. */
 function boundedQualification(state) {
   const { checks, capture, descriptor, ...rest } = state;
+  const changes = Array.isArray(capture?.changes) ? capture.changes : [];
   return { ...rest,
     ...(descriptor ? { descriptor: { version: descriptor.version, runId: descriptor.runId, kind: descriptor.kind,
       scope: descriptor.scope, draft: descriptor.draft } } : {}),
     ...(capture ? { capture: { patchDigest: capture.patchDigest, sourceDigest: capture.sourceDigest,
-      baseSourceDigest: capture.baseSourceDigest, changes: capture.changes } } : {}),
+      baseSourceDigest: capture.baseSourceDigest, changes: changes.slice(0, MAX_CHANGE_SUMMARIES),
+      changeCount: changes.length, changesTruncated: changes.length > MAX_CHANGE_SUMMARIES } } : {}),
     ...(checks ? { checks: checks.slice(0, STAGES.length).map(check => ({ stage: check.stage, name: check.name, passed: check.passed,
       reason: check.reason, exitCode: check.exitCode, sourceDigest: check.sourceDigest, outputBytes: check.outputBytes })) } : {}) };
 }
