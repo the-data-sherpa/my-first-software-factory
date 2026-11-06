@@ -29,12 +29,12 @@ No route was executed. Each item below names a refusal predicate that the captur
 2. **Registry route, metadata grammar.** `src/dependencies-lock.mjs:60` allows only `dependencies` and `bin` in tuple metadata. At least 183 tuples carry other keys.
 3. **Registry route, name and version grammar.** The name pattern at `dependencies-lock.mjs:6` excludes `.`. This rejects 27 packages, including `@nodelib/fs.scandir` (`bun.lock:322`) and `array.prototype.flat`. `versionRE` at line 9 rejects the prereleases `gensync@1.0.0-beta.2` (`bun.lock:1138`) and `resolve@2.0.0-next.5`.
 4. **Registry route, dependency-spec grammar.** `dependencies()` at lines 22-27 accepts only exact, `^`, or `~` triples. There are 38 nested specs outside that grammar, such as `*` (`bun.lock:666`), hyphen ranges, `||` unions, `x` ranges, and prerelease carets.
-5. **Registry route, orphan rule.** Line 85 requires every tuple to be reachable through `dependencies` edges. The traversal mirror reached 723 of 945 tuples. That leaves 222 orphans: 160 carry `os`/`cpu` metadata, and 137 are named in `optionalDependencies` of reached packages.
+5. **Registry route, orphan rule.** Line 85 requires every tuple to be reachable through `dependencies` edges. The placement-only traversal mirror reached 723 of 945 tuples, leaving 222 unreached: 160 carry `os`/`cpu` metadata, and 137 are named in reached packages' `optionalDependencies`. This mirror does not validate version ranges or earlier predicates. It is not a runnable admission plan or proof that the legitimate lock graph is corrupt.
 6. **Offline route.** `src/dependencies.mjs:94` requires each manifest spec to be `file:vendor/<name>.tgz`. All 54 specs fail, starting with `@clerk/nextjs`. Lines 106 and 112 would also reject `configVersion` 0 and the four-element registry tuples.
 
 Each blocker is independent. Correcting only the first would still leave items 2-5.
 
-## Runtime gaps (unverified; not blockers)
+## Runtime acceptance gaps (unverified, not observed failures)
 
 - **Archive contents.** `registryArchive` (`dependencies-lock.mjs:96-99`) rejects published manifests that have non-empty `devDependencies`, `peerDependencies`, `optionalDependencies`, `os`, or `cpu`. No archive was read, so the effect is unknown.
 - **Sizes and availability.** `FETCH_LIMITS` sets 16 MiB per archive and 64 MiB each for total compressed and expanded bytes, with 20 000 entries (`dependencies-registry.mjs:13-14`). Other limits are the 128 MiB export, 256 MiB scratch space, and a 120 s check (`dependencies-process.mjs:57`, `containment.mjs:20-24`). Lockfile text bytes cannot establish archive or installed sizes. Registry availability was not checked.
@@ -54,7 +54,8 @@ Each blocker is independent. Correcting only the first would still leave items 2
 
 ## Preserve
 
-Keep the frozen Bun 1.3.14 policy and both lockfiles byte-for-byte. Keep the metadata, grammar, orphan, and archive rejections. Keep these as well:
+Q18 already selects Bun and `bun.lock` for Vanguard while preserving both lockfiles (`docs/phase-1-plan.md:64`). Their version disagreement does not reopen that choice or authorize npm. No lockfile changed during this preflight.
+A future approved profile may support specific legitimate forms rejected today. It must retain fail-closed handling of unknown or ambiguous forms and security checks, not blindly retain each accidental incompatibility. Preserve these guarantees:
 
 - script suppression and its proof;
 - kernel-denied preparation;
@@ -69,24 +70,25 @@ npm is not an authorized workaround. Changing `configVersion`, ignoring metadata
 
 ## Smallest future scope (not implemented)
 
-A separately authorized factory change would extend the registry planner for real Bun 1.3.14 locks:
+A separately authorized factory change must establish compatibility with the captured lock under pinned Bun 1.3.14, without assuming which Bun version wrote it:
 
 - an explicit decision on `configVersion` 0, based on documented Bun semantics;
 - npm name and semver grammar, including `.` and prereleases;
 - range evaluation for the observed spec forms;
-- traversal of optional and peer edges;
+- locked optional/peer-edge semantics, including optional peers and host applicability, without unplanned resolution or downloads;
 - a platform selection rule for `os`/`cpu`, so that only host-applicable optional archives are planned while the plan stays finite and fully reached;
 - archive-manifest checks consistent with that metadata.
 
-The change needs regression tests against a controlled loopback registry and committed captured-shape fixtures, plus independent review. An owner decision must also settle which lockfile is authoritative, given the five direct-version divergences.
+The change needs controlled-loopback and captured-shape regression fixtures plus independent review. Bun's authority is already settled. A compatible planner alone would not prove archive, size, native-package, baseline, or owner readiness. Unsupported formats or exceeded limits must still block rather than trigger a silent fallback.
 
 ## Next permission gates
 
-1. Owner authorization for the planner compatibility change and its review.
-2. An admission-only rerun (no fetch) against the recorded local-main base, which this capture does not establish.
-3. Separate authorization for locked registry acquisition (`authorizeRegistryFetch`), sizing, and preparation.
-4. Contained baseline `vitest`/`lint` runs.
-5. Only then any production-model call.
+1. Owner authorization for bounded factory compatibility work, controlled tests, and review. No such implementation is authorized by this inspection.
+2. Separately authorize exact local-main source and no-fetch dependency admission. This would be the first actual admission, not a rerun of this data inspection. `admitDependencies` is module-only; the CLI preparation operation also prepares the bundle.
+3. Separately authorize real locked acquisition, bounded sizing, and preparation, if the no-fetch plan is eligible.
+4. Separately authorize actual contained toolchain/baseline and production-model acceptance operations. No baseline-only CLI route was established here.
+
+The current owner admission runs a bounded no-tool model smoke **before** baseline Vitest/lint (`src/admission.mjs:176–194`). Only healthy baseline evidence permits tool-enabled executor work. Baseline validation before *any* production-model request would require a separately scoped model-free check, not an assumed reordering of the current CLI. The helper-grammar gate should precede even the smoke. This note changes none of those gates.
 
 ## Coverage
 
@@ -99,4 +101,6 @@ The change needs regression tests against a controlled loopback registry and com
   - real Bun, Vitest, and ESLint behavior;
   - the baseline result;
   - credentials and providers.
-- **Inapplicable:** automated tests. Execution was not authorized, and no factory source changed.
+- **Inapplicable:** automated runtime tests. Execution was not authorized, and no factory source changed.
+
+Parent integration clarified the settled Bun choice, the placement-only mirror, and the actual admission ordering. The child's original receipts remain retained. Its receipt files used 0644 and the inner scripts directory 0755 inside the private 0700 root; the parent hardened them to 0600/0700 without changing data. Parent Markdown/link/prose checks used already installed tools, not an installation.

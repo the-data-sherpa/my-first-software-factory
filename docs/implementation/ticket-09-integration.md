@@ -17,6 +17,18 @@ After the recorded verification and independent reviews, the owner approved opti
 The same approval permits a bounded read-only Vanguard compatibility preflight: selected helper and relevant tests, manifests/lockfiles, and tracked test/lint configuration. It does not permit target-code execution, credentials or `.env` access, package acquisition/installation, production-model calls, changes to Vanguard, tracker writes, or publication. The local engineering checkpoint is not domain Approval for a Proposal.
 Real local-main source admission, contained baseline/toolchain checks, model acceptance, positive owner readiness/invalidation, and the actual maintenance demonstration remain later gates with separately authorized operations.
 
+## Completed read-only #10 compatibility preflight
+
+Two independent Claude Code Opus 5.5 research streams inspected factory source at `60cc8a4` and private Vanguard captures from `2026-11-06T16:27:13Z`. They produced the [source qualification note](ticket-10-source-preflight.md) and [dependency/toolchain note](ticket-10-toolchain-preflight.md). Both completed with no pending child work. These are primary-source research notes, not fresh Standards/Spec reviews or runtime results.
+
+The parent captured 21 selected files, including 13 indexed tests. All captured bytes matched their index blob IDs, and a later byte recheck confirmed the selected working files unchanged. Only the Git index was parsed as metadata: no target Git command, HEAD/ref, Git config, hooks, credentials, or `.env` was read. This does not establish a committed local-main manifest, repository cleanliness, untracked-test absence, or remote freshness. Capture manifest and analysis receipts are under `/tmp/factory-t10-readonly-preflight-4A1hwC/`, `/tmp/t10-streamA-receipts-U7Qjij/`, and `/tmp/t10-streamB-receipts-S3MEiP/`.
+
+The captured helper does not fit the current nullable-parameter/body grammar. The captured dependency inputs also fail current registry and offline predicates: lock version, metadata, names/versions/ranges, ordinary-edge completeness, and vendor-archive requirements. These are source-established incompatibilities, not observed command failures. The five oracle outputs were traced by hand, not reproduced through the real exported helper.
+
+Bun and `bun.lock` remain the accepted authority under Q18; differing npm resolutions do not reopen that decision. Parent integration also corrected the proposed timing: current admission smokes the model before baseline checks, so a pre-model source gate must precede that smoke. No baseline-only CLI operation or revised dependency policy was implemented.
+
+This completes the authorized inspection. A bounded factory compatibility change and controlled tests need new authorization. Real source admission, package acquisition/preparation, Vanguard execution, production-model calls, owner readiness/invalidation, and #10 acceptance remain separate gates. No runtime, test, pin, target lockfile, or factory authority changed during this preflight.
+
 ## Implemented path
 
 The existing `serve --execute-agent` CLI selects `createQualifiedRepositoryExecution`, exported through `src/execution.mjs`.
@@ -133,7 +145,7 @@ The remaining read-only reports are `/tmp/factory-ticket09-standards-opus/report
 ### Spec
 
 - **SP-S1, medium, explicitly deferred by owner:** controlled runs must never become review-ready. Positive owner readiness and its stale-evidence downgrade remain unverified. The owner chose option B on 2026-11-06, accepting only the controlled checkpoint and deferring that positive coverage to separately authorized #10 work. No fabricated qualified receipt supplies readiness proof.
-- **SP-S2, medium, unresolved real-target compatibility:** the real recorded base might not fit the helper grammar or the retained `baseActual` examples. The preconditions below are explicit. No executed real-target compatibility evidence exists yet. The owner has separately authorized read-only source inspection, not a maintenance attempt.
+- **SP-S2, medium, unresolved real-target compatibility:** the real recorded base might not fit the helper grammar or the retained `baseActual` examples. The preconditions below are explicit. The completed read-only #10 preflight found grammar incompatibility for the captured helper and dependency-profile incompatibilities. No executed recorded-local-main compatibility evidence exists yet. Inspection did not authorize a maintenance attempt.
 - **SP-S3, low, deferred:** a mismatched explicit write scope still fails closed during qualification, not before the executor spends its allowance. Start-time rejection would improve feedback but is not implemented by this correction. Only the exact selected two-file scope is eligible.
 - **SP-S4, low, corrected at `ffd5566`:** the stale baseline-gap paragraph was removed and the old module record was marked historical. The frozen review did not cover that later documentation.
 - **SP-S5, advisory, retained:** the non-draft guard remains useful for standalone module callers, even though composition filters those outcomes earlier. A comment describes that distinction. The existing `incomplete` module case is relevant coverage, not composed-path success.

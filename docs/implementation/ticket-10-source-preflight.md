@@ -126,6 +126,7 @@ Each item needs separate authorization.
 Before a #10 run that can pass, the owner must authorize one of these:
 
 - the scoped factory grammar and preflight correction above, with tests
-- a different selected task
+- a different selected task, with its own scoped selection/oracle/qualification changes
 
+The current paths and cases are hard-coded in `SELECTION`; changing only the task brief is not an alternative qualification route.
 If the admitted base matches this captured helper and earlier gates pass, an unchanged grammar would refuse a draft-producing run only after model work. Do not start a paid run to discover this known static incompatibility.
