@@ -11,10 +11,10 @@ const [root, scenario] = process.argv.slice(2);
 // Policy/profile scenarios run a disposable copy of the factory modules and its
 // fixed quality policy, so edits never touch the repository under test.
 const copied = { 'policy-live': null, 'policy-passive': null, 'module-live': null, 'module-passive': null, 'qualifier-module-passive': null,
-  'composed-modules': ["'../docs/agents/change-quality.md']", "'../docs/agents/change-quality.md', 'qualification.mjs', 'qualification-selection.mjs']"],
-  'composed-missing': ["'../docs/agents/change-quality.md']", "'../docs/agents/change-quality.md', 'qualified-execution.mjs']"],
-  'profile-traversal': ["'../docs/agents/change-quality.md']", "'../docs/agents/change-quality.md', '../package.json']"],
-  'profile-policy-absent': ["'executor-tools.mjs',\n    '../docs/agents/change-quality.md']", "'executor-tools.mjs']"] };
+  'composed-modules': ["'../docs/agents/change-quality.md',", "'../docs/agents/change-quality.md', 'qualification.mjs', 'qualification-selection.mjs',"],
+  'composed-missing': ["'../docs/agents/change-quality.md',", "'../docs/agents/change-quality.md', 'qualified-execution.mjs',"],
+  'profile-traversal': ["'../docs/agents/change-quality.md',", "'../docs/agents/change-quality.md', '../package.json',"],
+  'profile-policy-absent': ["'../docs/agents/change-quality.md', ", ""] };
 const factoryRoot = join(root, 'factory');
 let modules = new URL('../../src/', import.meta.url);
 if (Object.hasOwn(copied, scenario)) {
@@ -31,7 +31,6 @@ if (Object.hasOwn(copied, scenario)) {
     assert.ok(source.includes(from), 'Admission profile fixture anchor changed.');
     await writeFile(path, source.replace(from, to));
   }
-  if (scenario === 'composed-missing') await writeFile(join(factoryRoot, 'src/qualified-execution.mjs'), 'export {};\n');
   modules = new URL(`file://${factoryRoot}/src/`);
 }
 const load = name => import(new URL(name, modules).href);
@@ -72,7 +71,10 @@ const execution = { ...admission, async start(input) {
         await tools.write('convex/syncHelpers.ts', scenario === 'unchanged-helper' ? draftHelper.replace(".replace(/\\s+/g, ' ').trim();", ';')
           // Stream E probe: mutating shared Object.is made toBe pass for an unchanged address.
           : scenario === 'object-is-gaming' ? 'export function normalizeAddress(address) {\n  Object.is = () => true; return address;\n}\n'
-          : scenario === 'helper-unsupported' ? draftHelper.replace(".trim();", ".replace(/x/g, () => '').trim();") : draftHelper);
+          : scenario === 'helper-unsupported' ? draftHelper.replace(".trim();", ".replace(/x/g, () => '').trim();")
+          : ['helper-comment-2028', 'helper-comment-2029', 'helper-comment-cr'].includes(scenario)
+            ? draftHelper.replace('{\n', `{\n  // An ECMAScript line terminator${String.fromCharCode(scenario.endsWith('2028') ? 0x2028 : scenario.endsWith('2029') ? 0x2029 : 0x0d)}Object.is = () => true;\n`)
+            : draftHelper);
         await tools.write('lib/__tests__/normalize-address.test.ts', candidateTest(scenario));
       }
       if (scenario === 'wrong-scope') await tools.write('unrelated.mjs', 'export const unrelated = true;');
@@ -155,7 +157,7 @@ const execution = { ...admission, async start(input) {
     assert.equal(final.reviewReady, false);
     // Qualifies only when the executed final-suite argv pins --pool=forks over the repository's threads config.
     const pinnedPool = scenario === 'final-pool-threads' && /"cliPool":"forks"/.test(run.qualification.checks.find(c => c.stage === 'vitest')?.output ?? '');
-    const green = pinnedPool || ['forged-state', 'green', 'owner-advance', 'executable-base', 'candidate-valid-literal'].includes(scenario) || scenario.startsWith('stale-')
+    const green = ['final-pool-threads', 'forged-state', 'green', 'owner-advance', 'executable-base', 'candidate-valid-literal'].includes(scenario) || scenario.startsWith('stale-')
       || ['missing-new-file', 'policy-passive', 'module-passive', 'qualifier-module-passive', 'composed-modules'].includes(scenario);
     const expected = green ? 'qualified' : { 'no-change': 'no-change', stop: 'stopped', 'stop-finalization': 'stopped', 'stop-capture': 'stopped', 'stop-during-capture': 'stopped', deadline: 'failed', incomplete: 'failed', 'report-failure': 'failed', 'async-save': 'failed' }[scenario] ?? 'blocked';
     assert.equal(final.status, expected, JSON.stringify(final));
@@ -224,6 +226,9 @@ const execution = { ...admission, async start(input) {
       if (scenario === 'hidden-change') assert.ok(patch.changes.find(c => c.path === '.env'));
     }
     if (scenario === 'incomplete') assert.equal(callbackCalls, 0);
+    if (['object-is-gaming', 'helper-unsupported', 'helper-comment-2028', 'helper-comment-2029', 'helper-comment-cr'].includes(scenario)) {
+      assert.equal(final.reason, 'QUALIFICATION_SCOPE_UNSUPPORTED');
+    }
     if (['final-no-tests', 'final-skipped'].includes(scenario)) assert.equal(final.reason, 'FINAL_VITEST_UNVERIFIED');
     if (['wrong-case', 'wrong-assertion', 'malformed', 'skipped', 'no-tests', 'crash', 'unrelated-error'].includes(scenario)) assert.equal(final.reason, 'REGRESSION_UNVERIFIED');
     if (scenario === 'candidate-stale-live') assert.equal(final.reason, 'QUALIFICATION_INVALIDATED');
@@ -231,7 +236,7 @@ const execution = { ...admission, async start(input) {
     if (scenario === 'final-lint') assert.equal(final.reason, 'FINAL_LINT_FAILED');
     if (scenario === 'final-vitest') assert.equal(final.reason, 'FINAL_VITEST_FAILED');
     if (['runner-worker-count', 'runner-file-parallelism', 'runner-pool-threads'].includes(scenario)) assert.equal(final.reason, 'REGRESSION_UNVERIFIED');
-    if (scenario === 'final-pool-threads' && !pinnedPool) assert.equal(final.reason, 'FINAL_VITEST_FAILED');
+    if (scenario === 'final-pool-threads') assert.equal(pinnedPool, true, 'The integrated command must override a repository threads pool with forks.');
     if (['stop-capture', 'stop-during-capture'].includes(scenario)) assert.equal(final.reason, 'RUN_STOPPING');
     if (['green', 'final-pool-threads'].includes(scenario) && final.status === 'qualified') assert.equal(run.qualification.runtime.pool, 'forks');
     if (['green', 'candidate-valid-literal'].includes(scenario)) {

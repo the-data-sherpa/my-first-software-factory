@@ -125,7 +125,9 @@ try {
     }) };
   } } : execution;
   const qualifiedFiles = ['qualified-execution.mjs', 'qualification.mjs', 'qualification-artifacts.mjs', 'qualification-source.mjs',
-    'qualification-selection.mjs', 'qualification-scope.mjs', 'qualification-reporting.mjs', 'qualification-reporter.mjs'];
+    'qualification-selection.mjs', 'qualification-scope.mjs', 'qualification-reporting.mjs', 'qualification-reporter.mjs',
+    'work-items.mjs', 'factory.mjs', 'execution.mjs', 'storage.mjs', 'workspace.mjs', 'workspace-git.mjs',
+    'containment-lifetime.mjs', 'containment-entry.mjs', 'containment-host-probes.mjs', 'containment-test-profile.mjs'];
   const composedModule = await readFile(new URL('../../src/qualified-execution.mjs', import.meta.url)).then(() => true, () => false);
   let composedStates = [];
   const bounded = ['tool-limit', 'model-limit', 'model-drain-report', 'qualified-profile'].includes(scenario) ? { ...wrapped, async start(input) {

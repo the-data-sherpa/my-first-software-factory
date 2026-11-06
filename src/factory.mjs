@@ -367,23 +367,36 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
         clock.clearTimeout(owned.timer);
         throw new FactoryError('DRAIN_FAILED', 'Owned work did not confirm drainage. Admission and backend ownership remain fenced.');
       }
-      clock.clearTimeout(owned.timer);
-      let latest = get(id);
+      const checkFinalDeadline = () => {
+        if (clock.now() >= get(id).deadlineAt) requestStop(owned, 'RUN_DEADLINE');
+      };
+      checkFinalDeadline();
+      let latest = get(id); let workItem;
       if (!owned.stopReason && latest.qualification && record.status === 'completed' && record.outcome?.kind === 'qualified') {
         // Only after confirmed drainage: revalidate retained evidence, then persist at most one Work item.
         const finalized = await finalizeQualifiedRun({ run: latest, directory: join(stateDir, 'runs', id),
           dependencyRun: records.get(latest.admission?.dependencyRunId), now: clock.now() });
+        checkFinalDeadline();
         latest = get(id);
         ({ status: record.status, outcome: record.outcome } = finalized);
-        if (finalized.workItem && !owned.stopReason) latest.workItem = finalized.workItem;
+        workItem = finalized.workItem;
       }
+      // A stop/deadline can request cancellation after the first close/join above.
+      // Keep ownership until that later request settles too, before saving an output.
+      checkFinalDeadline();
+      await owned.cancelPromise;
+      checkFinalDeadline();
+      latest = get(id);
       if (owned.stopReason) { // A stop fence outranks every receipt and qualification result.
+        await owned.cancelPromise;
+        latest = get(id);
         record.status = owned.stopReason === 'RUN_DEADLINE' ? 'failed' : 'stopped';
         record.outcome = { kind: latest.qualification ? limitOutcome(record.status, owned.stopReason) : record.status,
           reviewReady: false, reason: owned.stopReason };
-      }
+      } else if (workItem) latest.workItem = workItem;
       records.save({ ...latest, status: record.status, outcome: record.outcome,
         execution: record.executor ? latest.execution : record.execution });
+      clock.clearTimeout(owned.timer);
       owned.drained = true;
     }
   }

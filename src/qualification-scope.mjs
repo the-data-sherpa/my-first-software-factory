@@ -28,7 +28,11 @@ function parseBody(text, start, parameter) {
   const skip = () => {
     for (;;) {
       if (i < text.length && ' \t\n\r'.includes(text[i])) i++;
-      else if (text.startsWith('//', i)) { const end = text.indexOf('\n', i); if (end < 0) unsupported(); i = end + 1; }
+      else if (text.startsWith('//', i)) {
+        const end = text.slice(i + 2).search(/[\n\r\u2028\u2029]/);
+        if (end < 0) unsupported();
+        i += end + 3;
+      }
       else if (text.startsWith('/*', i)) { const end = text.indexOf('*/', i + 2); if (end < 0) unsupported(); i = end + 2; }
       else return;
     }
@@ -61,7 +65,7 @@ function parseBody(text, start, parameter) {
     for (i++; i < text.length; i++) {
       const c = text[i];
       if (c === '\n' || c === '\r' || c === ' ' || c === ' ') unsupported();
-      if (c === '\\') { i++; if (i >= text.length || '\n\r'.includes(text[i])) unsupported(); continue; }
+      if (c === '\\') { i++; if (i >= text.length || /[\n\r\u2028\u2029]/.test(text[i])) unsupported(); continue; }
       if (c === '[') characterClass = true;
       else if (c === ']') characterClass = false;
       else if (c === '/' && !characterClass) break;

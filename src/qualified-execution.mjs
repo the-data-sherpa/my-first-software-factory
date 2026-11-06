@@ -32,6 +32,9 @@ export function createQualifiedRepositoryExecution(options = {}) {
       let stopping = false; let fault; let qualifying; let closing; let settled = false;
       // Unconfirmed drainage is sticky and outranks every handled or reporting error.
       const latch = error => { if (isDrain(error)) fault ??= error; };
+      // Cleanup methods confirm drainage only; an unfamiliar rejection is not proof
+      // that cleanup succeeded. Reporting failures belong to `finished` instead.
+      const cleanupFailure = error => latch(isDrain(error) ? error : failure('DRAIN_FAILED'));
       const halted = () => stopping || input.signal?.aborted;
       const owner = await executor.start({ ...input,
         saveAdmission(state) { const result = input.saveAdmission(state); current.admission = structuredClone(state); return result; },
@@ -84,9 +87,8 @@ export function createQualifiedRepositoryExecution(options = {}) {
       return Object.freeze({ finished,
         async cancel() {
           stopping = true; shutdown.abort();
-          // The qualifier's cancel replays its handled verdict error; only drainage matters here.
           const results = await Promise.allSettled([owner.cancel(), (async () => { await (await startedQualification())?.cancel(); })()]);
-          for (const result of results) if (result.status === 'rejected') latch(result.reason);
+          for (const result of results) if (result.status === 'rejected') cleanupFailure(result.reason);
           if (fault) throw fault;
         },
         // Qualification closes first: its final freshness check needs the live executor owner.
@@ -96,12 +98,11 @@ export function createQualifiedRepositoryExecution(options = {}) {
             let error;
             if (!settled) {
               shutdown.abort();
-              try { await owner.cancel(); } catch (e) { latch(e); }
+              try { await owner.cancel(); } catch (e) { cleanupFailure(e); }
             }
             try { await finished; } catch (e) { latch(e); error ??= e; }
-            // A non-drain rejection here repeats the already handled qualification outcome.
-            try { await (await startedQualification())?.close(); } catch (e) { latch(e); }
-            try { await owner.close(); } catch (e) { latch(e); error ??= e; }
+            try { await (await startedQualification())?.close(); } catch (e) { cleanupFailure(e); }
+            try { await owner.close(); } catch (e) { cleanupFailure(e); }
             if (fault) throw fault;
             if (error) throw error;
           })();

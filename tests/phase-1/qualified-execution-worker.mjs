@@ -40,13 +40,14 @@ assert.equal(initialized, 0, 'Construction is passive.');
 const saved = []; let handle; let receipt; let runId; let stopping; let fault; let scheduled = false;
 const execution = { ...qualified, async start(input) {
   runId = input.runId;
-  const pending = { version: 1, runId: input.runId, kind: qualified.admissionKind, status: 'pending', reviewReady: false };
-  handle = await qualified.start({ ...input, run: { ...input.run, qualification: pending },
+  assert.deepEqual(input.run.qualification, { version: 1, runId: input.runId, kind: qualified.admissionKind, status: 'pending', reviewReady: false });
+  handle = await qualified.start({ ...input,
     saveExecutor(state) {
       input.saveExecutor(state);
       if (scenario === 'stop-before-qualification' && state.stage === 'complete' && state.status === 'draft-produced') stopping = factory.stopRun(input.runId);
     },
     saveQualification(state) {
+      input.saveQualification(state);
       assert.equal(state.version, 1); assert.equal(state.runId, input.runId); assert.equal(state.kind, qualified.admissionKind);
       saved.push(structuredClone(state));
       writeFileSync(join(root, 'qualification-projection.json'), JSON.stringify(state), { mode: 0o600 });

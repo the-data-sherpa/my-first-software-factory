@@ -18,6 +18,7 @@ export { createModelExecution } from './model-execution.mjs';
 export { createOwnerModelPreflight } from './model-owner.mjs';
 export { createAdmissionExecution, verifyAdmissionHandoff } from './admission.mjs';
 export { createRepositoryExecution, verifyExecutorHandoff, validateExecutorScope, inspectExecutor } from './executor.mjs';
+export { createQualifiedRepositoryExecution } from './qualified-execution.mjs';
 // Internal factory adapter building blocks; never expose SDK handles to the app or CLI.
 export { Receipt as executionReceiptDocument, result as readExecutionResult };
 export { createRunTools } from './run-tools.mjs';

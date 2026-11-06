@@ -4,7 +4,7 @@ import { open } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { openFactory, inspectHistory, backupFactory, restoreFactory, DEFAULT_STATE_DIR, FactoryError } from '../src/factory.mjs';
-import { createFixtureExecution, createOwnerModelPreflight, createRepositoryExecution } from '../src/execution.mjs';
+import { createFixtureExecution, createOwnerModelPreflight, createQualifiedRepositoryExecution } from '../src/execution.mjs';
 import { admitWorkspace, prepareWorkspace, inspectWorkspace } from '../src/workspace.mjs';
 
 const print = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
@@ -29,7 +29,7 @@ async function serve(values) {
   const fixture = values.fixture ? createFixtureExecution({ delayMs: Number(values['fixture-delay-ms'] ?? 0) }) : undefined;
   if (!values.fixture && values['fixture-delay-ms'] !== undefined) throw new FactoryError('INVALID_ARGUMENTS', 'Fixture options require --fixture.');
   const execution = fixture ?? (values['model-preflight'] ? createOwnerModelPreflight()
-    : values['admit-agent'] ? createAdmissionExecution() : values['execute-agent'] ? createRepositoryExecution() : undefined);
+    : values['admit-agent'] ? createAdmissionExecution() : values['execute-agent'] ? createQualifiedRepositoryExecution() : undefined);
   const mode = execution?.mode ?? 'production-blocked';
   const factory = await openFactory({ stateDir: values['state-dir'], execution,
     ...(values['prepare-workspace'] || values['admit-agent'] || values['execute-agent'] ? { workspace: { admit: admitWorkspace, prepare: prepareWorkspace, inspect: inspectWorkspace } } : {}),

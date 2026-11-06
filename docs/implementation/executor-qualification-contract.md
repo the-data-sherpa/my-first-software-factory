@@ -196,5 +196,22 @@ It must call the real implementation and original factory budget, not simulate i
 The parent must test the actual composition with executor-produced drafts, new files, stale evidence, cancellation, and crash/passive inspection.
 It then runs full verification and independent review before accepting #9.
 
+### Integrated application path
+
+The existing CLI `serve --execute-agent` now selects `createQualifiedRepositoryExecution`; `createRepositoryExecution` remains module-only for its existing API consumers.
+The composed adapter opts in with `qualifiesDrafts: true`, and the application supplies the pending versioned qualification and synchronous `saveQualification` callback before dispatch.
+Snapshots are detached, identity-bound evidence. A matching receipt is provisional until the application confirms drainage, passively revalidates evidence, and checks the original deadline through finalization.
+A reporting failure need not have saved its own failure verdict; a specific false-readiness failure receipt can preserve `QUALIFICATION_PERSIST_FAILED` without authorizing success.
+
+The final record contains at most one stable project/run-scoped Work item, with private task, plan, transcript, complete patch/new-file, check, usage, and outcome references.
+Controlled output remains false-readiness. Conditional owner readiness is unverified until real owner acceptance and never grants Approval.
+Inspection revalidates current evidence but never finalizes interrupted work. Lists show unverified summaries. Stale inspection clears projected readiness without rewriting history.
+Never-dispatched qualification reservations settle only after confirmed drainage, remain counted, and never refund the original allowance. Entered operations without receipts remain uncertain.
+
+The selected helper language is deliberately conservative: earlier `const` bindings, a final `return`, and supported string-method chains with literal arguments. Unsupported syntax blocks rather than widening trust.
+The trusted oracle uses primitive type/strict-equality checks in addition to framework assertions; finite examples remain limited behavioral evidence, not a general semantic proof.
+Qualification commands require the fork pool and validate resolved configuration; this mitigates shared-descriptor access from worker threads, not a proven universal anti-forgery property.
+See the [current integration record](ticket-09-integration.md) for source/evidence boundaries and pending acceptance.
+
 Live credentials/model calls, real Vanguard access, public package downloads, services, and global changes remain outside this implementation authorization.
 Ticket #10 needs separate owner authorization after the controlled implementation gates pass.

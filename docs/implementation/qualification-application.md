@@ -2,7 +2,7 @@
 
 This records the application side of the #8/#9 composition.
 It is not #9 acceptance, real toolchain or provider readiness, or Phase 1 completion.
-The composed adapter (`createQualifiedRepositoryExecution`, stream C), shared exports, CLI wiring, and the combined process proofs belong to the parent.
+The parent has integrated the composed adapter, exports, CLI wiring, and controlled process proofs. See the [integration record](ticket-09-integration.md) for current evidence and open validation; this stream record retains the historical module checks.
 
 ## Ownership
 
@@ -51,6 +51,7 @@ Opted-in runs use the persisted verdict, not the receipt alone:
 | Not started | `qualified` | `failed / QUALIFICATION_UNVERIFIED` |
 | Not started | Other executor outcome | Existing executor mapping |
 | Started, no verdict | `interrupted` | `interrupted` |
+| Started | Matching-kind, false-readiness `failed / QUALIFICATION_PERSIST_FAILED` | Specific failed outcome even when reporting could not save a verdict |
 | Started, no verdict | Anything else | `failed / QUALIFICATION_UNVERIFIED` |
 | Complete verdict | Different status, kind, readiness, or reason | `failed / QUALIFICATION_UNVERIFIED` |
 | Complete verdict | Matching | `qualified`/`no-change` → `completed`; others keep their status and reason |
@@ -62,18 +63,19 @@ Passive reconciliation and uncertain tool reservations still take precedence and
 ## Finalization and Work item
 
 A matched `qualified` receipt is only provisional.
-After the handle's `close()` confirms drainage, and only without a stop fence, the application:
+After the handle's `close()` confirms drainage, and only without a stop fence or expired original deadline, the application:
 
 1. Runs passive qualifier inspection against the saved record.
 2. Requires `qualified` and `verified` evidence, a descriptor, a capture, complete artifacts, and the full ordered ten-stage check list in both the evidence and the saved state.
 3. Requires retained, current executor evidence and an executor draft digest equal to the descriptor's digest.
-4. Saves at most one `run.workItem` with the final status in the existing single record save.
+4. Rechecks the original deadline, then saves at most one `run.workItem` with the final status in the existing single record save. The deadline timer remains active during passive revalidation.
 
 Any failure gives `blocked / QUALIFICATION_INVALIDATED` and no Work item.
 A stop requested before or during finalization still produces `stopped` (or `budget-limited / RUN_DEADLINE`), and no Work item is saved.
 A drain failure keeps the existing fence: `interrupted / drain_failed`, rejected close, and retained ownership.
 
-The Work item has explicit kind and `controlled` fields, `status: 'qualified-evidence'`, and `reviewReady: false`.
+The Work item has explicit kind and `controlled` fields. Controlled output has `status: 'qualified-evidence'` and `reviewReady: false`.
+An owner-profile result can have `status: 'review-ready'` only after fresh qualified owner evidence and the final executor/artifact checks. The positive owner path remains unverified, not enabled by a fixture boolean.
 It holds private references only:
 
 - brief digest and record references for the task and its evidence;
@@ -82,7 +84,7 @@ It holds private references only:
 - check receipt paths, `qualification/state.json`, counters and the reservations reference, and the outcome reference.
 
 It contains no Proposal, Approval, publication, or commit field.
-This slice never sets Work item readiness to true, including for an owner kind. Owner readiness needs a separate parent decision once real-runner evidence exists.
+Readiness is never Approval or permission to publish. Inspection clears projected readiness when evidence is stale or unverified; the saved verdict remains historical evidence.
 Incomplete outcomes keep the run's actual draft and evidence without a Work item.
 
 ## Passive projection
@@ -93,7 +95,7 @@ They add `qualificationEvidence` and replace `qualification` in the returned cop
 - No `qualification/` directory: `not-started`, `missing`.
 - A directory without `state.json`: `interrupted`, `incomplete`.
 - Mismatched or stale artifacts: the qualifier's `blocked / QUALIFICATION_INVALIDATED` with `artifactStatus: invalid`. Nothing is repaired.
-- A qualified verdict without a descriptor or the full check list is projected as invalid. See the integration note below.
+- A qualified verdict without a descriptor or the full check list is projected as invalid. Both qualifier and application enforce this shape.
 - A qualified verdict on a run that is not `completed` is projected with the run's status and `recordedStatus: 'qualified'`. A crash after qualification but before finalization stays interrupted, with no Work item.
 - A Work item shows `freshness: 'current'` only when the run is completed and its evidence revalidates. Otherwise it shows `invalidated`.
 
@@ -107,7 +109,7 @@ Tests use the in-process application seam with real disposable Git workspaces an
 That adapter runs no executor, qualifier, or checks, so it can only show refusals.
 Its passing cases are not composition acceptance.
 
-`tests/phase-1/qualification-application.test.mjs` passed 17/17 cases:
+At stream D commit `37f9656`, `tests/phase-1/qualification-application.test.mjs` passed 17/17 cases:
 
 - legacy behavior unchanged and opt-in validation;
 - snapshot validation, detachment, and the synchronous callback;
@@ -115,7 +117,7 @@ Its passing cases are not composition acceptance.
 - limit normalization, not-started and claimed-directory projection, stop precedence, and the drain fence;
 - process death in an exact-owned scope after a persisted qualified verdict, followed by passive offline and online reopen.
 
-On the final source, the focused file plus existing `factory`, `workspace-application`, `recovery`, `cli`, and `executor-application` regressions passed **82/82** (`regressions-final.log`). The exact-scope audit recorded 16 scopes, all with no survivors or remaining processes (`scope-audit-final.jsonl`).
+On that stream's source, the focused file plus existing `factory`, `workspace-application`, `recovery`, `cli`, and `executor-application` regressions passed **82/82** (`regressions-final.log`). The exact-scope audit recorded 16 scopes, all with no survivors or remaining processes (`scope-audit-final.jsonl`).
 The full suite, the browser test, and qualification module tests were not run in this stream.
 
 Mutation checks, with the source restored afterward:
@@ -125,15 +127,11 @@ Mutation checks, with the source restored afterward:
 
 Evidence and the scope audit are under `/tmp/factory-ticket09-streamD/`.
 
-## Integration notes and remaining proof
+## Integration dispositions and remaining proof
 
-- **Stream B:** `qualifier.inspect` returns `qualified/verified` for a saved state with a qualified verdict but no descriptor, capture, or checks. The application compensates. A module fix belongs to B.
-- **Stream B:** the qualifier's `prerequisites` currently rejects the admission profile key `../docs/agents/change-quality.md`. Until B lands, no real composed run can qualify at this base. That is why this stream has no positive Work item proof.
-- **Stream B:** undispatched upfront qualification reservations remain `uncertain`. The application deliberately does not exempt them, so such runs currently end `interrupted`.
-- **Stream C:** after confirmed drainage, the wrapper must report non-drain reporting errors as a receipt rather than a close rejection. The application treats any close rejection as a drain failure.
-- **Parent:** the following need combined process tests through the real composed adapter and CLI:
-  - composed green with exactly one Work item, CLI online and offline equality, and invalidation after a later worktree edit;
-  - stop during qualification and during finalization;
-  - deadline within the original limit;
-  - real process death mid-qualification;
-  - executor no-change and failure.
+The parent integrated B's exact policy-key validation, incomplete-qualified-state refusal, and settlement of provably never-dispatched reservations after confirmed drainage. Entered operations without receipts remain uncertain; the application does not exempt them.
+The qualifier now reports persistence failures through `finished` and uses `close`/`cancel` for drainage. The parent preserves the specific failure code without requiring that a failed reporting operation saved its own verdict.
+Controlled process checks now cover a real executor-produced Work item, new retained test, online/offline equality, late-edit invalidation, stops during qualification/finalization, original-deadline expiry after execution closes, actual process death during a check and after the qualified projection, no-change, and model refusal.
+The parent also keeps the deadline timer through finalization and rechecks the clock before saving the Work item.
+
+These corrections do not replace the final combined suite and independent review. Real owner/toolchain/provider acceptance and ticket #10 remain unverified and separately authorized.

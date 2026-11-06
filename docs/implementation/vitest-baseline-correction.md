@@ -41,7 +41,8 @@ This is intended: its baseline ran a command that the current factory no longer 
 
 A composed run is identified by `run.qualification`.
 For those runs only, the profile also hashes `qualified-execution.mjs` and the qualifier modules (`qualification.mjs`, `qualification-artifacts.mjs`, `qualification-source.mjs`, `qualification-selection.mjs`, `qualification-scope.mjs`, `qualification-reporting.mjs`, `qualification-reporter.mjs`).
-Legacy admission-only and executor profiles do not include these names.
+Parent integration also binds `work-items.mjs`, `factory.mjs`, `execution.mjs`, `storage.mjs`, workspace/Git, and the containment lifetime/entry/host/test-profile modules for composed runs. This fixed set addresses the known omitted implementation bindings, not every transitive dependency.
+Legacy admission-only and executor profiles do not include these conditional additions.
 If a composed module is missing, the profile cannot be computed and admission blocks before any gate effect.
 
 ## Evidence
@@ -52,7 +53,7 @@ It is a controlled model of the retained sources, not the Vitest distribution.
 
 - Red: with the old argv, the executed consumer reported ``CACError: Unknown option `--minWorkers` `` and admission blocked with `BASELINE_VITEST_FAILED`.
 - Green: admission succeeds and the consumer reports `{ watch: false, fileParallelism: false, maxWorkers: 1 }`.
-- `tests/phase-1/admission-profile.test.mjs` covers the composed profile. At this base `qualified-execution.mjs` is absent, so it checks the fail-closed branch. A temporary placeholder probe exercised the present branch; it was removed and not committed.
+- `tests/phase-1/admission-profile.test.mjs` covers the composed profile. At the stream's base `qualified-execution.mjs` was absent, so it checked the fail-closed branch. A temporary placeholder probe exercised the present branch; it was removed and not committed. Parent integration runs the actual composed modules and separately removes a required file from a disposable runtime after loading it, proving admission blocks before tools or model requests.
 
 ## Limits
 

@@ -103,6 +103,10 @@ test('owner executor CLI is explicit and passive until an admitted start passes 
   assert.deepEqual(await cli('list'), []);
   const run = await cli('start', '--request-id', 'owner-blocked', '--brief-text', brief, '--dependency-run', dependencyRunId, '--write-path', 'helper.mjs');
   assert.equal(run.capabilities.productionModel, true);
+  assert.equal(run.qualification?.version, 1, 'Owner executor mode must select composed qualification before dispatch.');
+  assert.equal(run.qualification.runId, run.id);
+  assert.equal(run.qualification.kind, 'owner');
+  assert.equal(run.qualification.reviewReady, false);
   const blocked = await until(() => cli('inspect', run.id), value => value.status === 'blocked');
   assert.equal(blocked.counters.modelAttempts, 0);
   assert.equal(blocked.counters.toolRounds, 0);

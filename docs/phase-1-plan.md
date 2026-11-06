@@ -333,9 +333,10 @@ This includes **13** application/CLI cases and **38** executor-module cases. Fiv
 All **328/328** parent-recorded exact scopes were inactive and empty, including red reproductions and retained examples.
 The parent accepts the controlled #8 checkpoint after these corrections and verification, not the complete owner path or real maintenance demonstration.
 
-Ticket #9 must still qualify actual executor-produced drafts through the live opaque handoff, with both stages sharing ownership and budgets.
-The [qualification parent review](implementation/ticket-09-parent-review.md) records the rejected first module result, returned corrections, and a further parent correction to resolved Vitest worker settings.
-Those qualification commits remain isolated and unaccepted.
+Ticket #9 is now integrated locally through `createQualifiedRepositoryExecution`, selected by the existing CLI executor mode. The real executor supplies the live opaque handoff; both stages retain the original ownership, budget, and deadline.
+Controlled process checks produce one inspectable private Work item from actual executor writes and reject tautologies, stale evidence, and interrupted finalization without promoting incomplete work.
+The [integration record](implementation/ticket-09-integration.md) distinguishes these proofs from pending final combined verification and independent review. Ticket #9 remains unaccepted.
+The [qualification parent review](implementation/ticket-09-parent-review.md) retains the rejected first module result and historical corrections; the baseline command/profile correction and qualification hardening are now integrated rather than isolated. Real toolchain/provider/Vanguard acceptance and ticket #10 remain separate gates.
 A shared implementation gap remains: the admission command contains `--minWorkers=1`, absent from the supported Vitest 4.0.17 CLI definitions.
 Resolve the command and execution-profile binding together before claiming a complete owner path.
 Neither a model claim nor a factory-owned oracle substitutes for retained candidate regression tests failing on base and passing on draft.

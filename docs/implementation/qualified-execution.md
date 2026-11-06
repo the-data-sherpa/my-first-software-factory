@@ -7,9 +7,8 @@ It adds `createQualifiedRepositoryExecution` in `src/qualified-execution.mjs`.
 The adapter composes the real repository executor with the real draft qualifier under one live owner.
 It does not accept ticket #9, establish real toolchain or provider readiness, or complete Phase 1.
 
-The parent owns the `src/execution.mjs` re-export, the CLI `serve --execute-agent` wiring, and final acceptance.
-Stream D owns application persistence and the work item.
-This stream does not edit the factory, CLI, executor, admission, containment, or qualifier files.
+The parent has integrated the `src/execution.mjs` re-export, existing CLI `serve --execute-agent` wiring, and stream D application persistence.
+Final acceptance remains pending; see the [integration record](ticket-09-integration.md). Stream C's original ownership excluded factory, CLI, executor, admission, containment, and qualifier changes.
 
 ## Adapter
 
@@ -82,15 +81,14 @@ The executor owner stays live until the qualifier has drained. The qualifier's f
 - `close()` is memoized. If work has not settled, it aborts and cancels the executor.
   It then waits for the outcome, closes the qualifier, and closes the executor, in that order.
 - `DRAIN_FAILED` and `MODEL_DRAIN_FAILED` are sticky. They take precedence over reporting and persistence errors.
-  `finished`, every later `cancel()`, and every `close()` reject with the latched drain failure.
-- A non-drain rejection from the qualifier's `cancel` or `close` repeats its already handled outcome. It is not reported as a drain failure.
-- Any `close` failure of the executor is reported. The application then retains ownership.
+  Failures raised during execution reject `finished`; later cleanup failures cannot rewrite an already resolved receipt. Every later `cancel()` and `close()` rejects with the latched cleanup failure, and the application retains ownership.
+- The qualifier reports persistence errors through `finished`, not cleanup methods. An unexpected rejection from any cleanup method becomes `DRAIN_FAILED`, even with an unfamiliar error code. A nominal receipt is provisional until close confirms drainage.
 
 ## Verification
 
 Tests use the existing exact-owned harness, disposable `/tmp/factory-dependencies-*` repositories, installed Bun, controlled synthetic Vitest and ESLint packages, dummy in-memory credentials, and a controlled Responses transport.
 The transport only proposes tool calls. The real executor tools write `convex/syncHelpers.ts` and the new `lib/__tests__/normalize-address.test.ts`.
-A narrow application bridge in the worker supplies the pending projection and synchronous save while stream D is pending. It injects stop requests and one reporting fault. It does not replace the executor, qualifier, budget, or containment.
+The worker now requires the real application's pending qualification and forwards every synchronous save to it. A narrow wrapper injects stop requests and one reporting fault; it does not replace the executor, qualifier, budget, or containment.
 
 `tests/phase-1/qualified-execution.test.mjs` covers:
 
@@ -105,11 +103,8 @@ A narrow application bridge in the worker supplies the pending projection and sy
 
 The verification record for this stream is in the stream report, under `/tmp/factory-ticket09-streamC/`.
 
-## Integration dependencies
+## Integration dispositions
 
-- `qualified`, `tautology`, and `drain-report` require stream B's acceptance of the fixed `../docs/agents/change-quality.md` implementation key.
-  Until then, the qualifier's prerequisites return `blocked / QUALIFICATION_INVALIDATED` for every actual executor draft.
-- A stop that arrives during draft capture is classified by the qualifier as `blocked / WORKSPACE_CANCELLED`, not `stopped`.
-  The application still records `stopped` from its own stop reason. The qualifier classification belongs to stream B.
-- The current application maps any repository-executor receipt other than `draft-produced` or `no-change` to a failure. Stream D must add the qualified mapping.
-- The parent must re-export the adapter and wire it to `serve --execute-agent`.
+The parent integrated B's exact factory-policy key allowance and stopped/deadline capture classification, D's opt-in and qualified receipt mapping, and the shared export/CLI wiring.
+The combined composition/application selection passed 26/26, including the real executor, tautology, original tool limit, stop paths, and sticky drain/reporting fault. This is focused controlled evidence, not the final full suite or owner acceptance.
+The separate application/CLI process checks and remaining review gates are recorded in the [integration record](ticket-09-integration.md).

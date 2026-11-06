@@ -14,7 +14,7 @@ for (const scenario of ['green', 'candidate-tautology', 'candidate-unrelated', '
   'stale-overlay', 'stale-candidate', 'stale-report', 'stop-finalization',
   'stale-source', 'stale-patch', 'stale-test', 'stale-toolchain', 'stale-check', 'stale-profile', 'missing-new-file',
   'policy-live', 'policy-passive', 'module-live', 'module-passive', 'qualifier-module-passive', 'composed-modules', 'composed-missing',
-  'profile-traversal', 'profile-policy-absent', 'object-is-gaming', 'helper-unsupported', 'async-save',
+  'profile-traversal', 'profile-policy-absent', 'object-is-gaming', 'helper-unsupported', 'helper-comment-2028', 'helper-comment-2029', 'helper-comment-cr', 'async-save',
   'stop-capture', 'stop-during-capture', 'forged-state', 'runner-pool-threads', 'final-pool-threads',
   'late-source', 'tool-limit', 'stop', 'deadline', 'report-failure', 'drain-report', 'crash-inspect']) {
   test(`independent draft qualification through trusted execution: ${scenario}`, async t => {

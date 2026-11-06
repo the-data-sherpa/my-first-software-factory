@@ -70,6 +70,10 @@ export function applyQualificationReceipt(record, receipt) {
     if (receipt.status === 'qualified') return unverified('QUALIFICATION_UNVERIFIED');
     return false;
   }
+  // A reporting failure cannot always save its own verdict. The drained composition
+  // may still report this specific failure, never a success based on a receipt alone.
+  if (receipt.status === 'failed' && receipt.reason === 'QUALIFICATION_PERSIST_FAILED'
+    && receipt.kind === state.kind && receipt.reviewReady === false) return unverified(receipt.reason);
   const verdict = state.verdict;
   if (!verdict) {
     if (receipt.status !== 'interrupted') return unverified('QUALIFICATION_UNVERIFIED');
@@ -104,8 +108,7 @@ async function qualificationEvidence(directory, run, dependencyRun) {
     recordedStatus: state.verdict?.status ?? 'interrupted', artifactStatus: 'invalid', artifacts: { directory: 'qualification', complete: false }, stages: [] };
   let evidence;
   try { evidence = await passive.inspect({ directory, run, dependencyRun }); } catch { return invalid; }
-  // The qualifier's inspection accepts a qualified verdict without a descriptor or checks.
-  // The application never projects that as verified evidence.
+  // Require the application's complete evidence shape as well as the qualifier verdict.
   return evidence.status === 'qualified' && !currentQualified(run, evidence) ? invalid : evidence;
 }
 
@@ -134,12 +137,13 @@ export async function finalizeQualifiedRun({ run, directory, dependencyRun, now 
     const state = run.qualification;
     if (run.executor?.status !== 'draft-produced' || executor.artifactStatus !== 'retained' || executor.draftCurrent !== true
       || run.executor.draft?.sourceDigest !== state.descriptor.draft?.sourceDigest) return invalid;
-    const outcome = { kind: 'qualified', reviewReady: false, reason: 'QUALIFIED_EVIDENCE' };
+    const reviewReady = state.kind === 'owner' && evidence.reviewReady === true && state.verdict.reviewReady === true;
+    const outcome = { kind: 'qualified', reviewReady, reason: 'QUALIFIED_EVIDENCE' };
     const workItem = {
       version: 1, id: `work_${run.id.slice('run_'.length)}`, projectId: run.project.id, runId: run.id, requestId: run.requestId,
-      kind: state.kind, controlled: state.kind === 'controlled-fixture', status: 'qualified-evidence',
-      // Readiness for review is not granted by this application slice, and never by controlled evidence.
-      reviewReady: false, createdAt: now,
+      kind: state.kind, controlled: state.kind === 'controlled-fixture', status: reviewReady ? 'review-ready' : 'qualified-evidence',
+      // Only fresh owner-profile qualification can establish readiness, never Approval.
+      reviewReady, createdAt: now,
       task: { brief: 'record:brief', sha256: digest(run.brief.text), evidence: 'record:brief.evidence' },
       plan: run.executor.plan ? { artifact: run.executor.plan.artifact, provenance: run.executor.plan.provenance } : null,
       transcript: { directory: 'executor', events: executor.events.length },
@@ -178,6 +182,9 @@ export async function observeQualification(record, saved, directory, dependencyR
     // Listing skips artifact hashing. It shows the recorded summary as unverified, never as current.
     record.qualificationEvidence = { status: 'unverified', recordedStatus: saved.qualification.verdict?.status ?? saved.qualification.status,
       runId: saved.id, kind: saved.qualification.kind, reviewReady: false, artifactStatus: 'unverified' };
+    record.qualification.recordedReviewReady = saved.qualification.reviewReady;
+    record.qualification.reviewReady = false;
+    if (record.outcome) record.outcome.reviewReady = false;
     if (saved.workItem) record.workItem = { ...structuredClone(saved.workItem), reviewReady: false, freshness: 'unverified' };
     return record;
   }
@@ -187,9 +194,13 @@ export async function observeQualification(record, saved, directory, dependencyR
     // Run-level stop, failure, or interruption outranks a retained qualified verdict.
     evidence = { ...evidence, status: record.status, recordedStatus: 'qualified', reviewReady: false };
   }
-  record.qualificationEvidence = { ...evidence, stages: (evidence.stages ?? []).slice(0, STAGES.length) };
+  const reviewReady = current && saved.qualification.kind === 'owner' && evidence.reviewReady === true && saved.workItem?.reviewReady === true;
+  record.qualification.recordedReviewReady = saved.qualification.reviewReady;
+  record.qualification.reviewReady = reviewReady;
+  record.qualificationEvidence = { ...evidence, reviewReady, stages: (evidence.stages ?? []).slice(0, STAGES.length) };
+  if (record.outcome) record.outcome.reviewReady = reviewReady;
   if (saved.workItem) {
-    record.workItem = { ...structuredClone(saved.workItem), reviewReady: false, freshness: current ? 'current' : 'invalidated' };
+    record.workItem = { ...structuredClone(saved.workItem), reviewReady, freshness: current ? 'current' : 'invalidated' };
   }
   return record;
 }

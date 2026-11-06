@@ -2,7 +2,7 @@
 
 ## Status
 
-Phase 0 evaluation is complete, with runnable verification probes, [findings](docs/phase-0-findings.md), and an [accepted integration decision](docs/adr/0001-embed-pi-durable.md). Phase 1 tickets #1–#8 have accepted controlled implementation checkpoints. Ticket #8 connects bounded draft execution to the application and CLI; qualification and the complete owner path remain unfinished. This is not yet a working maintenance factory. Dependencies and Node 24.21.0 are pinned locally. No credentials, services, or schedules have been installed or changed.
+Phase 0 evaluation is complete, with runnable verification probes, [findings](docs/phase-0-findings.md), and an [accepted integration decision](docs/adr/0001-embed-pi-durable.md). Phase 1 tickets #1–#8 have accepted controlled implementation checkpoints. Ticket #9 now has local executor-to-qualification integration and controlled application/CLI proofs; its final combined verification and independent review are pending. The complete owner path remains unverified. This is not yet a working maintenance factory. Dependencies and Node 24.21.0 are pinned locally. No credentials, services, or schedules have been installed or changed.
 
 The factory's job is repository maintenance, starting with [`vanguard`](https://github.com/the-data-sherpa/vanguard) as its first project. Vanguard replaces `crewroom` by the owner's decision on 2026-11-02. The restart gate passes for `@earendil-works/pi-durable` 1.5.0. The owner accepted direct embedding with SQLite and Pi's `ModelRuntime`, rather than adopting Durable Pi's applications. The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including outcome-first execution. A complexity classifier and specialist team are not required. The owner separately authorized ticket implementation. See [Running the controlled CLI](#running-the-controlled-cli) and the [implementation record](docs/phase-1-plan.md#implementation-record). Production-model availability and Vanguard execution remain unverified.
 
@@ -362,7 +362,7 @@ npm run factory -- inspect RUN_ID --state-dir "$STATE" --event 0 --offset 0 --le
 
 Use the event index and returned `nextOffset` to page evidence, including after the backend closes.
 Admission remains historical baseline evidence after authorized edits.
-Drafts report `draft-produced / QUALIFICATION_REQUIRED`, never readiness; no-change and incomplete outcomes remain distinct.
+The module-only executor reports `draft-produced / QUALIFICATION_REQUIRED`, never readiness. The CLI now selects composed qualification after a produced draft; no-change and incomplete outcomes remain distinct.
 Reopening after a crash does not resume work or equate completed smoke with completed execution.
 Uncertain drainage retains backend ownership, even if failure reporting also fails.
 
@@ -372,9 +372,9 @@ Check output-limit stops block further work and handoff; ordinary assertion fail
 Final parent verification passed **274/274**, with no exclusions or skips, plus the **1/1** browser regression.
 All **328/328** parent-recorded exact scopes were inactive and empty.
 
-A known shared implementation gap remains: the baseline command uses `--minWorkers=1`, absent from Vitest 4.0.17's tagged CLI definitions.
-The command and admission profile must be corrected before claiming a complete owner path; controlled packages do not establish real compatibility.
-Qualification composition, live provider acceptance, real Vanguard compatibility, and the #10 demonstration remain separate gates.
+The baseline command and admission profile now use supported serial options instead of the unsupported `--minWorkers=1`; see the [command correction](docs/implementation/vitest-baseline-correction.md).
+Controlled CLI consumers and reporters do not establish real Vitest or ESLint compatibility.
+Final combined qualification verification, live provider acceptance, real Vanguard compatibility, and the #10 demonstration remain separate gates.
 See the [ticket #8 implementation record](docs/implementation/ticket-08.md) for interfaces, retained examples, and recovery limits.
 
 ### Unavailable executor policy
@@ -391,6 +391,30 @@ Starting a new run still needs owner authorization and can make paid model reque
 
 Keep the blocked run for inspection. Restoring the file does not resume it.
 Reusing its request ID returns the same retained run rather than retrying it.
+
+## Retained draft qualification
+
+The existing `serve --execute-agent` mode now selects `createQualifiedRepositoryExecution`; no second execution-mode flag or model route was added.
+After the real executor produces a draft, the adapter retains its live opaque handoff and runs the independent qualifier with the same budget and owner.
+The qualifier requires the same retained test bytes to fail the intended assertion on the recorded base and pass on the draft, an independent behavioral oracle, and passing final suite/lint checks.
+Qualification commands pin the fork pool and validate its resolved configuration. Controlled reporter fixtures are not real-distribution acceptance.
+
+For the selected address task, qualification supports only the exact helper/test scope and a conservative helper language: `const` declarations, a final `return`, and literal-argument string-method chains.
+Assignments, global references, arbitrary function calls, control flow, operators, and templates are unsupported and block with `QUALIFICATION_SCOPE_UNSUPPORTED`, even if a broader implementation might be correct.
+The fixed examples cannot prove general correctness or exclude every overfitted implementation.
+
+After confirmed drainage, fresh evidence, and a final original-deadline check, the application can retain one stable `workItem` on the run.
+It references the original task/evidence, actual plan/transcript, complete private patch and new files, checks, usage, and outcome.
+`inspect RUN_ID` revalidates evidence; `list` shows unverified summaries. Neither executes, repairs, or completes old work.
+Later edits invalidate projected freshness and readiness without changing saved history.
+Controlled Work items always have `reviewReady: false`; conditional owner readiness is not Approval or permission to publish and has no live acceptance yet.
+No-change, blocked, failed, stopped, and interrupted attempts retain their actual partial evidence without a manufactured successful Work item.
+
+An interrupted composed run remains fenced pending trusted external reconciliation; `resume` refuses with `UNSAFE_RESUME`.
+A qualified private artifact recorded just before a crash does not finalize the application run or create a Work item through inspection.
+Unconfirmed drainage outranks reporting failures. A reporting failure after confirmed drainage is a failed outcome, not an invented drain failure.
+See the [integration record](docs/implementation/ticket-09-integration.md), [composition](docs/implementation/qualified-execution.md), and [application contract](docs/implementation/qualification-application.md).
+Ticket #9 remains unaccepted pending final combined verification and fresh independent review. No live model, Vanguard, dependency-download, or #10 operation is authorized by these implementation results.
 
 ## Contained execution tools
 
@@ -414,7 +438,7 @@ A later #6 test exposed an intermittent descendant-cleanup failure. The [cleanup
 The [preparation correction](docs/implementation/dependency-cleanup-correction.md) shares those namespace-lifetime rules with both installer stages and preserves failed-drain ownership through finalization and reporting errors.
 Final combined verification passed **184/184**, with no exclusions or skips, plus the **1/1** browser regression.
 Manager failure with owner loss and simultaneous backend/launcher death remain unverified recovery cases.
-Owner execution requires explicit executor mode. Readiness qualification and live model/toolchain acceptance remain later gates.
+Owner execution requires explicit executor mode. Qualification is integrated locally; final combined verification and live model/toolchain acceptance remain gates.
 
 ## Build stages
 
@@ -452,7 +476,7 @@ The owner accepted direct integration in [ADR 0001](docs/adr/0001-embed-pi-durab
 
 ### 1. Complete one manual run
 
-The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including the minimal outcome-first baseline, then separately authorized implementation. Tickets #1–#6 supply the controlled foundation, and #7 joins the startup gates. The parent accepted #7 after independent review. The parent also accepted #8's controlled checkpoint after review corrections. The shared Vitest baseline-command gap, qualification, ticket #10, and live model/Vanguard acceptance remain before the real maintenance demonstration.
+The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-11-02, including the minimal outcome-first baseline, then separately authorized implementation. Tickets #1–#6 supply the controlled foundation, and #7 joins the startup gates. The parent accepted #7 after independent review. The parent also accepted #8's controlled checkpoint after review corrections. The baseline-command correction and qualification are integrated locally, pending final combined verification and independent review. Ticket #10 and live model/Vanguard acceptance remain before the real maintenance demonstration.
 
 - Configure Vanguard for one human-selected offline logic/test change and a minimal set of tools. Use one-shot Vitest and lint as candidate checks, not the Sentry-enabled build or live-account integrations.
 - Record a local `main` commit and create a factory-owned worktree and branch from it using plain Git. Leave the existing checkout untouched; do not automatically fetch, pull, or create `dev`.
