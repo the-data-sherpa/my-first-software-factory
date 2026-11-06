@@ -248,8 +248,8 @@ npm run factory -- start --request-id model-smoke-001 --brief /absolute/path/to/
 
 Starting this backend does not discover credentials or issue a request. Only an admitted `start` creates Pi's `ModelRuntime`.
 That owner operation requires the live foreground resource scope before credential discovery. A plain, uncontained backend refuses it.
-The selected route is `openai/gpt-6.1-sol`, with explicit low reasoning and cap-compatible API-key authentication.
-OAuth, missing credentials, unsupported caps, and provider failures block instead of choosing another route.
+The selected route is `anthropic/claude-sonnet-5-5`, with explicit low adaptive effort and existing Pi OAuth. [ADR 0006](docs/adr/0006-use-capped-anthropic-oauth-in-phase-1.md) records the replacement of the initial OpenAI route after the owner declined API keys.
+API-key authentication, missing credentials, unsupported caps, and provider failures block instead of choosing another route. Requests retain exact `max_tokens` caps including thinking; Pi owns credential resolution.
 The smoke allows one attempt, at most 1,024 requested output tokens, and a 60-second complete-stream deadline.
 It uses the original run deadline and persistent budget. It enables no repository tools and cannot combine with workspace preparation or a fixture.
 
@@ -531,7 +531,7 @@ The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-1
 ## Candidate technology
 
 - **Agent foundation:** `@earendil-works/pi-durable` 1.5.0, matching the local `pi` 1.5.0 installation, accepted in ADR 0001.
-- **Models:** `openai/gpt-6.1-sol` initially, until the web UI, using Pi's existing model and credential integration. Do not substitute Codex, OpenRouter, or `local-ai-auto`. Authentication and live availability remain unverified; preflight failure blocks execution rather than triggering a fallback.
+- **Models:** Fixed `anthropic/claude-sonnet-5-5` with low adaptive effort and Pi's existing OAuth integration, as recorded in [ADR 0006](docs/adr/0006-use-capped-anthropic-oauth-in-phase-1.md). No provider/model fallback or API keys. Live authentication and cap acceptance remain unverified; preflight failure blocks execution.
 - **Application:** Node.js ES modules, using the repository's `.mjs` style. Ticket #1 applies the selected Node 24.21.0 pin through `.mise.toml`, the package engine, and the CLI version check. Global runtime settings remain unchanged.
 - **Storage:** SQLite, with a factory-level record store and per-run durable execution stores as selected in ADR 0005. Ticket #1 records storage versions, enforces native read-only execution inspection, and verifies closed-store backup/restore.
 - **Interface:** Phase 1 CLI with a foreground backend; a web workspace in Phase 2.

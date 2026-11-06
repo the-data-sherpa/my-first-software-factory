@@ -4,6 +4,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, chmod, readdir, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { runOwnedScope } from '../fixtures/containment-harness.mjs';
 import { createQualifiedRepositoryExecution } from '../../src/qualified-execution.mjs';
 
@@ -13,7 +15,7 @@ test('composed execution construction and recovery stay passive and refuse injec
   const execution = createQualifiedRepositoryExecution(options);
   assert.equal(execution.mode, 'repository-executor');
   assert.equal(execution.admissionKind, 'controlled-fixture');
-  assert.equal(execution.model, 'openai/gpt-6.1-sol');
+  assert.equal(execution.model, 'anthropic/claude-sonnet-5-5');
   assert.equal(execution.qualifiesDrafts, true);
   assert.ok(Object.isFrozen(execution));
   for (const key of ['verifyDraft', 'qualifier', 'createDraftQualification', 'handoff']) {
@@ -46,11 +48,12 @@ for (const scenario of ['qualified', 'tautology', 'no-change', 'refusal', 'tool-
       const worker = scenario === 'drain-report' ? './qualified-execution-drain-worker.mjs' : './qualified-execution-worker.mjs';
       // Exhausting the allowance takes 23 real executor read rounds, each a durable model turn.
       const result = await runOwnedScope(t, [fileURLToPath(new URL(worker, import.meta.url)), root, scenario],
-        scenario === 'tool-limit' ? { timeout: 180000 } : {});
+        { ...(scenario === 'tool-limit' ? { timeout: 180000 } : {}), environment: { TMPDIR: tmpdir(),
+          ...(process.env.FACTORY_TEST_STATE_DIR ? { FACTORY_TEST_STATE_DIR: process.env.FACTORY_TEST_STATE_DIR } : {}) } });
       drained = true;
       if (process.env.FACTORY_QUALIFIED_EXECUTION_EVIDENCE) {
         await writeFile(`${process.env.FACTORY_QUALIFIED_EXECUTION_EVIDENCE}/${scenario}.json`,
-          JSON.stringify({ root, code: result.code, stdout: result.stdout, stderr: result.stderr }), { mode: 0o600 });
+          JSON.stringify({ root, stateDir: process.env.FACTORY_TEST_STATE_DIR, code: result.code, stdout: result.stdout, stderr: result.stderr }), { mode: 0o600 });
       }
       assert.equal(result.code, 0, result.stderr);
     } finally {

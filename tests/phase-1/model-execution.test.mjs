@@ -160,8 +160,9 @@ test('default explicit preflight is one no-tool request even for transient error
     const run = await factory.startRun({ requestId: 'smoke-only', brief });
     const done = await until(() => factory.inspectRun(run.id), (item) => ['completed', 'failed', 'blocked'].includes(item.status));
     assert.equal(requests.length, 1);
-    assert.equal(requests[0].payload.max_output_tokens, 1024);
+    assert.equal(requests[0].payload.max_tokens, 1024);
     assert.equal(done.counters.modelAttempts, 1);
+    assert.equal(done.execution.model, 'anthropic/claude-sonnet-5-5');
     assert.equal(done.outcome.reviewReady, false);
     assert.equal(done.capabilities.productionModel, true);
     assert.equal(done.capabilities.repositoryTools, false);

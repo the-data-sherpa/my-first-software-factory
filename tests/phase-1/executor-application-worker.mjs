@@ -78,7 +78,7 @@ try {
   const transport = controlledTransport(async (request, index) => {
     if (qualityPolicy) {
       try {
-        const delivered = request.payload.input.filter(item => item.role === 'developer').map(item => item.content);
+        const delivered = (request.payload.system ?? []).map(item => item.text);
         assert.equal(delivered.some(text => text.includes(qualityPolicy.text)), index > 1,
           'The full shared policy belongs in every executor request, never in the no-tool smoke.');
       } catch (error) { policyFailure = error; throw error; }
@@ -90,7 +90,7 @@ try {
     if (kind === 'pagination') {
       try {
         if (index > 2) {
-          const response = request.payload.input.filter(item => item.type === 'function_call_output').at(-1).output;
+          const response = request.payload.messages.flatMap(item => Array.isArray(item.content) ? item.content : []).filter(item => item.type === 'tool_result').at(-1).content;
           assert.ok(Buffer.byteLength(response) <= 16384, `Encoded response is ${Buffer.byteLength(response)} bytes, exceeding 16384.`);
           const page = JSON.parse(response);
           assert.equal(page.offset, readOffset);
