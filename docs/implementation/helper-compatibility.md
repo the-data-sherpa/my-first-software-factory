@@ -36,7 +36,7 @@ It saves stage `helper-eligibility` first, then checks the following in order:
 
 1. **Selected write pair.** The executor's `writePaths` must be exactly the selected helper and test. Otherwise it refuses with `QUALIFICATION_SCOPE`. The late `scope()` check gave the same code only after model work.
 2. **Admitted helper.** The helper must have an entry in the admitted source manifest. Otherwise it refuses with `QUALIFICATION_BASE_INVALID`.
-3. **Admitted bytes.** The gate reads the worktree helper through `privateRoot` and `withFile`. That read does not follow links, requires an owned single-link regular file, and is capped at the manifest size. The bytes must match the manifest's `bytes` and `sha256`. Otherwise it refuses with `ADMISSION_SOURCE_CHANGED`. No Git process or scratch directory is used.
+3. **Admitted bytes.** The helper must fit the existing executor write limit (`CONTAINMENT_LIMITS.writeBytes`, 65,536 bytes), or the gate refuses with `QUALIFICATION_SCOPE_UNSUPPORTED`. The gate reads the worktree helper through `privateRoot` and `withFile`. That read does not follow links, requires an owned single-link regular file, and is capped at the manifest size. The bytes must match the manifest's `bytes` and `sha256`. Otherwise it refuses with `ADMISSION_SOURCE_CHANGED`. No Git process or scratch directory is used.
 4. **Grammar.** The bytes must decode as UTF-8 and parse under the grammar above. Otherwise it refuses with `QUALIFICATION_SCOPE_UNSUPPORTED`.
 
 After the asynchronous read, the existing `active()` check applies the stop, cancellation, and deadline.
@@ -46,13 +46,13 @@ Earlier prerequisite failures keep their specific codes.
 The qualifier's draft-time `verifyHelperScope` check, its `scope()` check, and passive inspection stay unchanged as defense in depth.
 
 Legacy admission-only and non-qualifying executor Runs do not run the gate.
-Admission loads the qualification module only on the composed path, so legacy admission has no new module dependency.
+Admission dynamically imports the gate only on the composed path. Existing execution-module re-exports already load qualification modules on legacy paths; the guarantee here concerns gate execution, not module loading.
 
 ## Bindings and modules
 
 No new module was added, and no profile list was edited.
 `src/qualification-scope.mjs` is already in the composed admission profile (`qualifiedFiles`) and the qualifier's `implementation` list.
-Its imports (`qualification-artifacts.mjs`, `qualification-selection.mjs`, and through them `containment-files.mjs`) are also already bound in the composed profile.
+Its imports (`qualification-artifacts.mjs`, `qualification-selection.mjs`, `containment.mjs`, and through them `containment-files.mjs`) are also already bound in the composed profile.
 A change to any of them invalidates a composed binding before the gate runs.
 
 ## Tests
@@ -64,13 +64,14 @@ Authored helpers in `tests/fixtures/helper-compatibility.mjs` have the captured 
 | Case | Expected result |
 | --- | --- |
 | `nullable-qualified` | Qualified controlled Work item, 10 check stages, 18 of the original tool rounds, `reviewReady: false`. The retained candidate includes passing `null`, `undefined`, and `""` cases. |
+| `nullable-qualified-at-write-limit` | A 65,536-byte base reaches the same controlled qualified outcome, retaining the exact base bytes in the patch. |
 | `nullable-candidate-mismatch` | A wrong `null` expectation in the authored candidate is refused with `REGRESSION_UNVERIFIED`, which shows that those cases execute |
 | `changed-guard`, `changed-signature` | Draft refused late with `QUALIFICATION_SCOPE`, no checks, no Work item |
 | `removed-guard`, `draft-reassignment` | Draft refused late with `QUALIFICATION_SCOPE_UNSUPPORTED`, no checks, no Work item |
 | `wrong-write-pair` | Zero-effect refusal with `QUALIFICATION_SCOPE` at the gate |
 | `changed-before-read` | Worktree helper changed after capture and before the gate read: zero-effect refusal with `ADMISSION_SOURCE_CHANGED` |
 | `stop-at-eligibility`, `deadline-at-eligibility` | A stop or deadline during the gate ends the run `stopped` or `failed` (`RUN_DEADLINE`) with zero effects |
-| 22 unsupported admitted bases in six groups | Zero-effect refusal at `helper-eligibility`: `QUALIFICATION_SCOPE_UNSUPPORTED`, or `QUALIFICATION_BASE_INVALID` for an absent helper |
+| 25 unsupported admitted bases in nine groups | Zero-effect refusal at `helper-eligibility`: `QUALIFICATION_SCOPE_UNSUPPORTED`, or `QUALIFICATION_BASE_INVALID` for an absent helper |
 | `reassignment` then legacy executor | The legacy executor still constructs one runtime and produces its draft on the same base |
 
 A zero-effect refusal means no runtime construction, model request, model attempt, tool round, baseline, containment receipt, executor submission, draft, qualification directory, or Work item. The refusal code is on the admission record.
@@ -113,6 +114,22 @@ Private evidence root: `/tmp/factory-streamA-helper-evidence-oQCxES` (mode 0700)
 
 The captured helper's bytes (SHA-256 `7d5655a0…69302408`) were parsed as data through `verifyHelperScope` with identical base and draft copies, under the initial and the final grammar. Both results were an unchanged supported envelope. The admission gate's manifest-bound read was not applied to the capture, which has no admitted manifest.
 This is not evaluation, TypeScript loading, Vitest compatibility, or base-regression evidence.
+
+## Parent follow-up after integration
+
+The parent corrected the early size gate and parser error reporting on uncommitted source above `f58e3fb`. The size gate and executor now share the existing `CONTAINMENT_LIMITS.writeBytes` value (65,536); neither the write limit nor the qualifier's 1 MiB artifact-read limit changed. A base that the executor cannot read within its write scope refuses before model work.
+
+Private receipts: `/tmp/factory-vanguard-compatibility-aIwVNC/helper-followup/`.
+
+- A 1 MiB + 1 byte helper and a later 65,537-byte helper each reproduced one runtime construction, one smoke request, and three tool rounds before `EXECUTOR_SOURCE`. These were executor refusals, not observed late-qualifier failures. After correction, both cases refuse at eligibility with zero effects.
+- The same-length, still-parseable source mutation exercises the existing hash comparison. Temporarily removing that comparison made the regression fail; restoration hashes and passing checks are retained. This is guard-discrimination coverage, not a newly discovered product defect.
+- The 20,000-parenthesis helper first produced generic `ADMISSION_FAILED`. The correction maps parser `RangeError` to `QUALIFICATION_SCOPE_UNSUPPORTED`. The first attempted green failed in fixture setup copying Bun with `EDQUOT`; that environment failure remains retained. Fresh checks after verified evidence archival passed.
+- `helper-focused-green.log`: 4/4 passed, exit 0, bound by `helper-final-source.sha256`.
+- `helper-affected.log`: 30/30 passed, exit 0, on the same snapshot: 21 helper cases and 9 composed-execution cases. This is not a full suite.
+- The later 65,536-byte positive initially failed an obsolete fixture assertion after reaching a qualified Work item. It is retained as a test-authoring failure, not a product red. After expecting the actual authored base in the patch, `boundary-corrected-green.log` passed 1/1, exit 0, bound by `boundary-corrected-source.sha256`. Runtime module hashes are unchanged from the 30-case run; the later test additions were not part of that run. Counts are not additive full-suite claims.
+- `current-parent-scope-audit-final.json`: all 42 exact parent scopes inactive and empty, including retained failures and the previous environment failure. This audit overlaps those scopes' original journals.
+
+The [follow-up review ledger](helper-followup-review.md) keeps Standards and Spec conclusions separate. Recursive parsing still has an engine-dependent stack threshold; no deterministic maximum nesting depth, or identical early/late stack headroom, is established. The observed overflow is an inspectable refusal. No new numeric grammar-depth policy was introduced, and this correction does not claim to eliminate every possible late parser refusal.
 
 ## Limits
 

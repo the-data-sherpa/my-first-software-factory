@@ -1,5 +1,6 @@
 import { readArtifact, fail, hash } from './qualification-artifacts.mjs';
 import { SELECTION } from './qualification-selection.mjs';
+import { CONTAINMENT_LIMITS } from './containment.mjs';
 
 // Supported helper language, parsed completely; anything else fails closed with
 // QUALIFICATION_SCOPE_UNSUPPORTED. It is a conservative allowlist, not a
@@ -142,8 +143,10 @@ function envelope(text) {
   if (matches.length !== 1) unsupported();
   const [, parameter, nullable] = /^\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*(?::\s*string( \| null \| undefined)?\s*)?$/.exec(matches[0][1]) ?? [];
   if (!parameter || KEYWORDS.has(parameter)) unsupported();
-  const { guardEnd, end } = parseBody(text, matches[0].index + matches[0][0].length, parameter, Boolean(nullable));
-  return [text.slice(0, guardEnd), text.slice(end)];
+  let body;
+  try { body = parseBody(text, matches[0].index + matches[0][0].length, parameter, Boolean(nullable)); }
+  catch (error) { if (error instanceof RangeError) unsupported(); throw error; }
+  return [text.slice(0, body.guardEnd), text.slice(body.end)];
 }
 const decode = bytes => { try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch { return unsupported(); } };
 export async function verifyHelperScope(directory) {
@@ -162,6 +165,7 @@ export async function verifyAdmittedHelper({ intent, writePaths }) {
   if (!Array.isArray(writePaths) || JSON.stringify([...writePaths].sort()) !== JSON.stringify(selected)) fail('QUALIFICATION_SCOPE');
   const entry = intent.sourceManifest.entries.find(item => item.path === SELECTION.helper);
   if (!entry) fail('QUALIFICATION_BASE_INVALID');
+  if (entry.bytes > CONTAINMENT_LIMITS.writeBytes) unsupported();
   let bytes;
   try { bytes = await readArtifact(intent.worktree, SELECTION.helper, entry.bytes); } catch { fail('ADMISSION_SOURCE_CHANGED'); }
   if (bytes.length !== entry.bytes || hash(bytes) !== entry.sha256) fail('ADMISSION_SOURCE_CHANGED');

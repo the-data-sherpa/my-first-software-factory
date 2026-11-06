@@ -14,14 +14,18 @@ async function cleanup(path) {
 // with controlled model transports and synthetic runner packages, never real Vitest.
 const cases = [
   ['nullable-qualified'], ['nullable-candidate-mismatch'],
+  ['nullable-qualified-at-write-limit'],
   ['changed-guard'], ['removed-guard'], ['changed-signature'], ['draft-reassignment'],
-  ['wrong-write-pair'], ['stop-at-eligibility'], ['deadline-at-eligibility'], ['changed-before-read'],
+  ['wrong-write-pair'], ['stop-at-eligibility'], ['deadline-at-eligibility'], ['changed-before-read'], ['changed-same-size-before-read'],
   ['unsupported-base', 'reassignment,unguarded-nullable,non-empty-guard,second-guard'],
   ['unsupported-base', 'late-guard,guard-else,braced-guard,equality-guard'],
   ['unsupported-base', 'reordered-union,optional-parameter,other-call,operator'],
   ['unsupported-base', 'uninitialized-let,line-separator-comment,unicode-escape-name,regex-class-slash'],
   ['unsupported-base', 'compact-union,two-member-union,guard-return-newline,guard-return-comment-newline'],
   ['unsupported-base', 'invalid-utf8,absent-helper'],
+  ['unsupported-base', 'oversized-comment'],
+  ['unsupported-base', 'write-limit-comment'],
+  ['unsupported-base', 'deep-parentheses'],
   ['unsupported-base', 'reassignment', 'legacy'],
 ];
 for (const [scenario, names, legacy] of cases) {
@@ -37,11 +41,12 @@ for (const [scenario, names, legacy] of cases) {
       if (process.env.FACTORY_HELPER_COMPATIBILITY_EVIDENCE) await writeFile(
         join(process.env.FACTORY_HELPER_COMPATIBILITY_EVIDENCE, `${label.replace(/[^a-z0-9-]+/g, '_')}.json`),
         JSON.stringify({ root, code: result.code, stdout: result.stdout, stderr: result.stderr }), { mode: 0o600 });
-      assert.equal(result.code, 0, result.stderr);
+      assert.equal(result.code, 0, `${result.stderr}\nRetained fixture: ${root}`);
       passed = true;
     } finally {
       // Failed cases stay for diagnosis.
       if (drained && passed) await cleanup(root);
+      else t.diagnostic(`Retained fixture: ${root}`);
     }
   });
 }

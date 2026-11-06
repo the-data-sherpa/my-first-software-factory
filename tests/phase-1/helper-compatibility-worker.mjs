@@ -9,7 +9,7 @@ import { openFactory } from '../../src/factory.mjs';
 import { createQualifiedRepositoryExecution, createRepositoryExecution } from '../../src/execution.mjs';
 import { serveFactory } from '../../src/control-server.mjs';
 import { admitWorkspace, prepareWorkspace } from '../../src/workspace.mjs';
-import { helperProject, commitHelper, helperExecutorReply, nullableBase, nullableDraft, nullableCandidate, mismatchedNullableCandidate,
+import { helperProject, commitHelper, helperExecutorReply, nullableBase, nullableDraft, writeLimitBase, nullableCandidate, mismatchedNullableCandidate,
   draftVariants, unsupportedBases } from '../fixtures/helper-compatibility.mjs';
 import { scope, helperPath, testPath } from '../fixtures/qualified-execution-model.mjs';
 import { controlledRuntime, controlledTransport } from './model-fixtures.mjs';
@@ -93,25 +93,27 @@ async function zeroEffect(result, label, { status = 'blocked', reason, admission
   assert.equal(run.workItem, undefined);
 }
 
-async function nullableFixture() {
-  const fixture = await helperProject(root, nullableBase);
+async function nullableFixture(base = nullableBase) {
+  const fixture = await helperProject(root, base);
   const stateDir = fixture.workspaceIntent.stateDir;
   const project = { id: 'vanguard', repositoryPath: fixture.repositoryPath };
   return { fixture, stateDir, project, dependencyRunId: await prepared(stateDir, project, 'prepare') };
 }
 
-if (['nullable-qualified', 'nullable-candidate-mismatch'].includes(scenario) || scenario in draftVariants) {
-  const { stateDir, project, dependencyRunId } = await nullableFixture();
+if (['nullable-qualified', 'nullable-qualified-at-write-limit', 'nullable-candidate-mismatch'].includes(scenario) || scenario in draftVariants) {
+  const base = scenario === 'nullable-qualified-at-write-limit' ? writeLimitBase : nullableBase;
+  if (scenario === 'nullable-qualified-at-write-limit') assert.equal(Buffer.byteLength(base), 65_536);
+  const { stateDir, project, dependencyRunId } = await nullableFixture(base);
   const draft = scenario in draftVariants ? draftVariants[scenario] : nullableDraft;
   const candidate = scenario === 'nullable-candidate-mismatch' ? mismatchedNullableCandidate : nullableCandidate;
   const result = await composedRun({ stateDir, project, dependencyRunId, draft, candidate, requestId: 'helper' });
   const { run } = result;
   output.push({ scenario, ...summary(result) });
-  assert.equal(await readFile(join(project.repositoryPath, helperPath), 'utf8'), nullableBase, 'The owner checkout is never modified.');
+  assert.equal(await readFile(join(project.repositoryPath, helperPath), 'utf8'), base, 'The owner checkout is never modified.');
   assert.equal(result.initialized, 1);
   assert.equal(run.executor.status, 'draft-produced', JSON.stringify(summary(result)));
   assert.equal(await readFile(join(run.workspace.intent.worktree, helperPath), 'utf8'), draft);
-  if (scenario === 'nullable-qualified') {
+  if (['nullable-qualified', 'nullable-qualified-at-write-limit'].includes(scenario)) {
     assert.equal(run.status, 'completed', JSON.stringify(summary(result)));
     assert.equal(run.outcome.kind, 'qualified');
     assert.equal(run.qualificationEvidence.status, 'qualified');
@@ -125,7 +127,7 @@ if (['nullable-qualified', 'nullable-candidate-mismatch'].includes(scenario) || 
     assert.equal(run.workItem.freshness, 'current');
     const patch = JSON.parse(await readFile(join(result.directory, run.workItem.patch.artifact), 'utf8'));
     const helper = patch.changes.find(change => change.path === helperPath);
-    assert.equal(Buffer.from(helper.before.contentBase64, 'base64').toString(), nullableBase);
+    assert.equal(Buffer.from(helper.before.contentBase64, 'base64').toString(), base);
     assert.equal(Buffer.from(helper.after.contentBase64, 'base64').toString(), nullableDraft);
     const added = patch.changes.find(change => change.path === testPath);
     // Qualification required these retained candidate cases, including null,
@@ -144,17 +146,22 @@ if (['nullable-qualified', 'nullable-candidate-mismatch'].includes(scenario) || 
     assert.equal(run.workItem, undefined);
     assert.equal(run.qualification.checks?.length ?? 0, 0, 'No check runs on an unsupported or changed envelope.');
   }
-} else if (['wrong-write-pair', 'stop-at-eligibility', 'deadline-at-eligibility', 'changed-before-read'].includes(scenario)) {
+} else if (['wrong-write-pair', 'stop-at-eligibility', 'deadline-at-eligibility', 'changed-before-read', 'changed-same-size-before-read'].includes(scenario)) {
   // A supported admitted helper; only the selected scope or the run's lifetime differs.
   const { stateDir, project, dependencyRunId } = await nullableFixture();
   const onAdmission = scenario === 'wrong-write-pair' ? undefined : (state, input, control) => {
     if (state.stage !== 'helper-eligibility') return;
     if (scenario === 'stop-at-eligibility') control.stop(input.runId);
     if (scenario === 'deadline-at-eligibility') control.expire();
-    if (scenario === 'changed-before-read') {
+    if (['changed-before-read', 'changed-same-size-before-read'].includes(scenario)) {
       // Synchronous: the admitted bytes change after capture, before the gate reads them.
+      const changed = scenario === 'changed-same-size-before-read' ? nullableBase.replace('Canonical', 'canonical') : nullableDraft;
+      if (scenario === 'changed-same-size-before-read') {
+        assert.notEqual(changed, nullableBase);
+        assert.equal(Buffer.byteLength(changed), Buffer.byteLength(nullableBase));
+      }
       const path = join(input.run.workspace.intent.worktree, helperPath);
-      chmodSync(path, 0o600); writeFileSync(path, nullableDraft);
+      chmodSync(path, 0o600); writeFileSync(path, changed);
     }
   };
   const writePaths = scenario === 'wrong-write-pair' ? [helperPath, testPath, 'lib/extra.ts'] : scope.writePaths;
@@ -163,7 +170,8 @@ if (['nullable-qualified', 'nullable-candidate-mismatch'].includes(scenario) || 
   const expected = { 'wrong-write-pair': { reason: 'QUALIFICATION_SCOPE' },
     'stop-at-eligibility': { status: 'stopped', reason: 'operator_stop', admission: 'RUN_STOPPING' },
     'deadline-at-eligibility': { status: 'failed', reason: 'RUN_DEADLINE' },
-    'changed-before-read': { reason: 'ADMISSION_SOURCE_CHANGED' } }[scenario];
+    'changed-before-read': { reason: 'ADMISSION_SOURCE_CHANGED' },
+    'changed-same-size-before-read': { reason: 'ADMISSION_SOURCE_CHANGED' } }[scenario];
   await zeroEffect(result, scenario, expected);
 } else if (scenario === 'unsupported-base') {
   const names = list.split(',');
@@ -173,6 +181,9 @@ if (['nullable-qualified', 'nullable-candidate-mismatch'].includes(scenario) || 
   let dependencyRunId;
   for (const name of names) {
     assert.ok(name in unsupportedBases, name);
+    if (name === 'write-limit-comment') assert.equal(Buffer.byteLength(unsupportedBases[name]), 65_537);
+    if (name === 'oversized-comment') assert.equal(Buffer.byteLength(unsupportedBases[name]), 1_048_577);
+    if (name === 'deep-parentheses') assert.ok(Buffer.byteLength(unsupportedBases[name]) < 65_536);
     await commitHelper(fixture, unsupportedBases[name], `unsupported helper: ${name}`);
     dependencyRunId = await prepared(stateDir, project, `prepare-${name}`);
     const result = await composedRun({ stateDir, project, dependencyRunId, draft: nullableDraft, requestId: `helper-${name}` });

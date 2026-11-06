@@ -4,6 +4,7 @@ import { privateRoot, withFile, sourceFingerprint } from './containment-files.mj
 import { EXECUTOR_TOOLS, validateExecutorCall } from './executor-policy.mjs';
 import { digest } from './executor-artifacts.mjs';
 import { FactoryError } from './storage.mjs';
+import { CONTAINMENT_LIMITS } from './containment.mjs';
 
 /** Keep the original manifest immutable; replace only explicit permitted file entries
  * in a detached expected manifest. The existing snapshot validator checks everything
@@ -19,7 +20,7 @@ export async function scopedSource(run, scope) {
       try {
         entry = await withFile(root, path, [], false, async file => {
           const stat = await file.stat();
-          if (stat.size > 65536 || Boolean(stat.mode & 0o111) !== (prior?.mode === '100755')) throw new FactoryError('EXECUTOR_SOURCE', 'Draft mode or size is outside the admitted scope.');
+          if (stat.size > CONTAINMENT_LIMITS.writeBytes || Boolean(stat.mode & 0o111) !== (prior?.mode === '100755')) throw new FactoryError('EXECUTOR_SOURCE', 'Draft mode or size is outside the admitted scope.');
           const bytes = Buffer.alloc(stat.size + 1);
           const { bytesRead } = await file.read(bytes, 0, bytes.length, 0);
           if (bytesRead !== stat.size) throw new FactoryError('EXECUTOR_SOURCE', 'Draft changed during validation.');

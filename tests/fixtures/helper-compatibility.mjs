@@ -17,6 +17,7 @@ const helper = (...body) => [signature, guard, ...body, '}', ''].join('\n');
 export const nullableBase = helper('  // Canonical uppercase street form.', `  let normalized = ${chain};`, '  return normalized;');
 export const nullableDraft = helper('  // Canonical uppercase street form.',
   `  let normalized = ${chain}.replace(/\\s+/g, ' ').trim();`, '  return normalized;');
+export const writeLimitBase = nullableBase.replace(guard, `${guard}\n/*${'x'.repeat(65_536 - Buffer.byteLength(nullableBase) - 5)}*/`);
 
 // The fixed five-case oracle has no null, undefined, or empty input. These extra
 // authored candidate cases must pass on base and draft; candidateEvidence permits
@@ -41,6 +42,9 @@ export const draftVariants = {
 
 // Admitted bases outside the bounded grammar. Each must refuse before any ModelRuntime.
 export const unsupportedBases = {
+  'write-limit-comment': nullableBase.replace(guard, `${guard}\n/*${'x'.repeat(65_537 - Buffer.byteLength(nullableBase) - 5)}*/`),
+  'oversized-comment': nullableBase.replace(guard, `${guard}\n/*${'x'.repeat(1_048_577 - Buffer.byteLength(nullableBase) - 5)}*/`),
+  'deep-parentheses': nullableBase.replace(chain, `${'('.repeat(20_000)}${chain}${')'.repeat(20_000)}`),
   reassignment: nullableBase.replace('  return normalized;', '  normalized = normalized.trim();\n  return normalized;'),
   'unguarded-nullable': nullableBase.replace(`${guard}\n`, ''),
   'non-empty-guard': nullableBase.replace(guard, '  if (!raw) return "EMPTY";'),
