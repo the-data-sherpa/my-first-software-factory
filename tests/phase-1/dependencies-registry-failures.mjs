@@ -46,7 +46,8 @@ export async function failureScenario(scenario, root) {
       missingTransitive: (lock) => { delete lock.packages['fixture-leaf']; },
       orphan: (lock) => { lock.packages.orphan = ['orphan@1.0.0', '', {}, lock.packages.vitest[3]]; },
       peer: (lock) => { lock.packages.vitest[2].peerDependencies = { other: '*' }; },
-      platform: (lock) => { lock.packages.vitest[2].os = ['linux']; },
+      // Host-applicable platform metadata is a supported form; a required non-host package is not.
+      platform: (lock) => { lock.packages.vitest[2].os = ['darwin']; },
       duplicateKeys: () => {},
     };
     for (const [name, mutateLock] of Object.entries(cases)) {

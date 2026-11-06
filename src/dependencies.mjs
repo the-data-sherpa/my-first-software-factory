@@ -7,7 +7,7 @@ import { verifyContainmentEnvelope } from './containment.mjs';
 import { hash, directory, regular, save, archiveManifest, seal, verifyInventory, parseDependencyJSON } from './dependencies-files.mjs';
 import { libraries, runPreparationSandbox } from './dependencies-process.mjs';
 import { proveScriptSuppression } from './dependencies-self-test.mjs';
-import { parseBunLock, registryPlan } from './dependencies-lock.mjs';
+import { parseBunLock, registryPlan, HOST } from './dependencies-lock.mjs';
 import { acquireRegistry, verifyAcquisition, REGISTRY } from './dependencies-registry.mjs';
 
 const INSTRUCTION = 'Ask the owner to admit and explicitly prepare a matching private dependency bundle through the foreground preparation operation. Agent tools cannot install packages.';
@@ -57,7 +57,7 @@ async function toolchain(bunPath, registry = false) {
     if (!info.isFile() || info.mode & 0o022 || ![0, process.getuid()].includes(info.uid) || info.size > 256 * 1024 ** 2) fail('DEPENDENCIES_UNSAFE');
     files.push({ path, sha256: hash(await readFile(path)), mode: info.mode & 0o777 });
   }
-  return { policy: registry ? 'bun-registry-cache-v1' : 'offline-tarball-v1', nodeVersion: process.versions.node, files };
+  return { policy: registry ? 'bun-registry-cache-v2' : 'offline-tarball-v1', nodeVersion: process.versions.node, files };
 }
 
 async function inputs(workspaceIntent, registry = false) {
@@ -82,10 +82,12 @@ async function inputs(workspaceIntent, registry = false) {
   const manifest = parseDependencyJSON(packageBytes);
   for (const key of ['workspaces', 'patchedDependencies', 'overrides', 'resolutions', 'catalog', 'catalogs', 'publishConfig', 'config', '_auth', '_authToken']) if (manifest[key]) fail('DEPENDENCIES_UNSUPPORTED');
   if (registry) {
-    const archives = registryPlan(manifest, parseBunLock(await read('bun.lock')));
+    // Platform selection is bound to the intent: a different preparation host is a different, unsupported profile.
+    if (process.platform !== HOST.os || process.arch !== HOST.cpu) fail('DEPENDENCIES_UNSUPPORTED');
+    const { archives, excluded, unmetPeers } = registryPlan(manifest, parseBunLock(await read('bun.lock')));
     const files = [];
     for (const path of names.sort()) { const data = await read(path); files.push({ path, sha256: hash(data), bytes: data.length }); }
-    return { files, acquisition: { registry: REGISTRY, archives } };
+    return { files, acquisition: { registry: REGISTRY, host: HOST, archives, excluded, unmetPeers } };
   }
   const packages = new Map();
   for (const field of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
