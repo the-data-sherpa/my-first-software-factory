@@ -1,7 +1,7 @@
 # Ticket #10 source preflight: selected helper versus qualification grammar
 
 A static, read-only stream A research note: not #10 or owner-readiness acceptance, a Standards or Spec review, or authorization for any operation.
-No factory or Vanguard code, test, package manager, model, or network request was run.
+No factory-runtime or Vanguard code, test, package manager, production-model call, or network request was run. Claude Code Opus 5.5 performed development research, not factory runtime execution.
 
 ## Inspected revisions and evidence
 
@@ -10,11 +10,11 @@ No factory or Vanguard code, test, package manager, model, or network request wa
   It is not a committed local-main manifest, and does not establish HEAD identity, cleanliness, untracked-file absence, or freshness.
 - Captured `convex/syncHelpers.ts`: 15,363 bytes, SHA-256 `7d5655a0…69302408`, matching the private capture manifest and its index blob `fb828fa9…`.
 - `lib/__tests__/normalize-address.test.ts` is absent from the capture, as the manifest's `absentCandidateTest` records.
-- Private receipt: `receipt.json` in a mode-0700 temporary directory.
+- Private receipt: `/tmp/t10-streamA-receipts-U7Qjij/receipt.json` in a mode-0700 temporary directory.
   It applies the factory's two signature regex literals to the captured file as data with Python `re`: one match at line 92, parameter text `raw: string | null | undefined`, `parameterRegexMatches: false`.
   It does not run the factory parser.
 
-## Finding: predicted deterministic refusal of the current base (not observed)
+## Finding: predicted refusal of the captured helper as a base (not observed)
 
 The selected helper signature is `normalizeAddress(raw: string | null | undefined): string` (captured `convex/syncHelpers.ts:92`).
 Its body has three statements, in this order:
@@ -39,21 +39,21 @@ By reading, the method chain itself (`toUpperCase`, `trim`, `replace` with regex
 The failure therefore does not depend on the draft.
 Even an unchanged base helper is refused.
 
-The function is called only from `src/qualification.mjs:179`. The resume and inspection path calls it again at `:316`.
-That call comes after all of the following:
+The active qualification path calls the function at `src/qualification.mjs:179`. Passive `inspect` revalidates saved qualified evidence with it at `:316`. Neither call resumes execution. Composed resume remains refused.
+The active call comes after all of the following:
 
 - The executor finishes with `draft-produced` (`src/qualified-execution.mjs:39–61`).
 - Capture finishes (`src/qualification.mjs:163`).
 - `verifyDraft` and the prerequisites run (`:173–176`).
 - `scope()` passes (`:177`, `:97–110`).
 
-So the expected cost is a full model execution before a certain `QUALIFICATION_SCOPE_UNSUPPORTED` refusal.
-No helper-specific check exists before executor dispatch: no other `src/` file references the helper or the function.
+If an admitted local-main base contains this captured helper and all earlier gates pass, a draft-producing run would already have spent model attempts before the predicted `QUALIFICATION_SCOPE_UNSUPPORTED` refusal. Earlier dependency or admission failures can stop a run without model work. This is not a prediction that every start spends its full allowance.
+The current admission path has no helper-grammar gate. The only `verifyHelperScope` call sites are these qualification and passive-inspection checks.
 
 **No draft can avoid this.**
 
 - The prefix and suffix envelope (`:121–123`, `:129`) includes the signature.
-  Narrowing the signature changes the prefix, which gives `QUALIFICATION_SCOPE`.
+  Narrowing the draft signature would also violate prefix equality if comparison were reached. It cannot avoid the earlier refusal while parsing this captured base.
 - `scope()` also requires both the helper and the new test to change (`src/qualification.mjs:103–104`).
 - Rewriting the target base outside the run is an unrelated target edit that narrows a legitimate exported contract.
   Inside the snapshot, the only caller passes `IncidentData.fullAddress: string` (lines 31, 143–144).
@@ -97,9 +97,9 @@ This is an owner decision. It is not implemented here.
   - the envelope comparison and `QUALIFICATION_SCOPE` semantics
 - Do not otherwise weaken the allowlist.
 
-**2. Earlier preflight.** Run the same `envelope` parse against the admitted base helper bytes before executor dispatch.
+**2. Earlier preflight.** Run the same `envelope` parse against the admitted base helper bytes before ModelRuntime construction and the admission smoke, not merely before executor dispatch. The existing admission smoke precedes the executor (`src/admission.mjs:176–188`).
 The bytes come from the recorded base object snapshot, not from the owner's checkout.
-An incompatible project then gets `QUALIFICATION_SCOPE_UNSUPPORTED` before any model call.
+Only that earlier placement can refuse the incompatible helper before the first factory model request.
 The qualification-time check stays as defense in depth.
 
 **3. Tests.** Fixture tests must use the real signature and body shapes: the union parameter, the guard, and `let`.
@@ -128,4 +128,4 @@ Before a #10 run that can pass, the owner must authorize one of these:
 - the scoped factory grammar and preflight correction above, with tests
 - a different selected task
 
-Starting a run unchanged would spend a model execution and then reach the predicted refusal.
+If the admitted base matches this captured helper and earlier gates pass, an unchanged grammar would refuse a draft-producing run only after model work. Do not start a paid run to discover this known static incompatibility.
