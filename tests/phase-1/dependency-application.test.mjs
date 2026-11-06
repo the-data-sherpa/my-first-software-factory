@@ -6,24 +6,37 @@ import { mkdtemp, chmod, readdir, rm } from 'node:fs/promises';
 import { openFactory, inspectHistory } from '../../src/factory.mjs';
 import { admitWorkspace, prepareWorkspace } from '../../src/workspace.mjs';
 
+const fixtureRoots = new WeakMap();
+async function cleanup(path) {
+  await chmod(path, 0o700);
+  for (const entry of await readdir(path, { withFileTypes: true })) if (entry.isDirectory()) await cleanup(`${path}/${entry.name}`);
+  await rm(path, { recursive: true, force: true });
+}
+function retainedTest(name, options, body) {
+  return test(name, options, async t => {
+    const roots = []; fixtureRoots.set(t, roots);
+    let passed = false;
+    try { await body(t); passed = true; }
+    finally {
+      if (passed && !t.signal.aborted && roots.every(root => root.drained)) {
+        for (const { path } of roots) await cleanup(path);
+      } else for (const { path } of roots) t.diagnostic(`Retained fixture: ${path}`);
+    }
+  });
+}
 async function scoped(t, scenario = 'prepare') {
   const root = await mkdtemp('/tmp/factory-dependencies-');
-  t.after(async () => {
-    async function writable(path) {
-      await chmod(path, 0o700);
-      for (const entry of await readdir(path, { withFileTypes: true })) if (entry.isDirectory()) await writable(`${path}/${entry.name}`);
-    }
-    await writable(root); await rm(root, { recursive: true, force: true });
-  });
+  const owned = { path: root, drained: false }; fixtureRoots.get(t).push(owned);
   const worker = fileURLToPath(new URL(scenario.startsWith('registry-')
     ? './dependency-registry-application-worker.mjs' : './dependency-application-worker.mjs', import.meta.url));
   const terminal = await runOwnedScope(t, [worker, root, scenario], { timeout: 30000, environment: { PATH: '/usr/bin:/bin', HOME: root } });
+  owned.drained = true;
   if (scenario.startsWith('crash-')) assert.notEqual(terminal.code, 0, 'The disposable worker must crash at its checkpoint.');
   else assert.equal(terminal.code, 0, terminal.stderr);
   return JSON.parse(terminal.stdout);
 }
 
-test('explicit owner registry authorization is saved before locked fetching and installation', { timeout: 40_000 }, async (t) => {
+retainedTest('explicit owner registry authorization is saved before locked fetching and installation', { timeout: 40_000 }, async (t) => {
   const { prepared, requests } = await scoped(t, 'registry-authorized');
   assert.equal(prepared.dependencies.registry, true);
   assert.equal(prepared.dependencies.receipt.acquisition.archives.length, 2);
@@ -33,7 +46,7 @@ test('explicit owner registry authorization is saved before locked fetching and 
   assert.ok(requests.every((request) => request.method === 'GET' && request.authorization === undefined));
 });
 
-test('registry dependencies never turn ordinary offline owner preparation into fetch authorization', { timeout: 40_000 }, async (t) => {
+retainedTest('registry dependencies never turn ordinary offline owner preparation into fetch authorization', { timeout: 40_000 }, async (t) => {
   const { prepared, requests } = await scoped(t, 'registry-no-authorization');
   assert.equal(prepared.status, 'failed');
   assert.equal(prepared.dependencies.registry, false);
@@ -41,7 +54,7 @@ test('registry dependencies never turn ordinary offline owner preparation into f
   assert.deepEqual(requests, []);
 });
 
-test('a later explicit controlled run reuses a matching bundle without fetching and persists its own check budget', { timeout: 40_000 }, async (t) => {
+retainedTest('a later explicit controlled run reuses a matching bundle without fetching and persists its own check budget', { timeout: 40_000 }, async (t) => {
   const { prepared, requests, reuse } = await scoped(t, 'registry-reuse');
   assert.equal(requests.length, 2);
   assert.equal(reuse.check.passed, true);
@@ -54,7 +67,7 @@ test('a later explicit controlled run reuses a matching bundle without fetching 
   assert.equal(prepared.counters.modelAttempts, 0);
 });
 
-test('application stop aborts and drains a stalled registry body without another fetch or a renewed budget', { timeout: 40_000 }, async (t) => {
+retainedTest('application stop aborts and drains a stalled registry body without another fetch or a renewed budget', { timeout: 40_000 }, async (t) => {
   const { prepared, requests } = await scoped(t, 'registry-stop-fetch');
   assert.equal(prepared.status, 'stopped');
   assert.equal(prepared.outcome.reason, 'operator_stop');
@@ -64,7 +77,7 @@ test('application stop aborts and drains a stalled registry body without another
   assert.equal(requests.length, 1);
 });
 
-test('crashed dependency preparation inspects passively and cannot release admission without a completed artifact receipt', { timeout: 40_000 }, async (t) => {
+retainedTest('crashed dependency preparation inspects passively and cannot release admission without a completed artifact receipt', { timeout: 40_000 }, async (t) => {
   for (const scenario of ['crash-intent', 'crash-receipt']) {
     const { stateDir, runId } = await scoped(t, scenario);
     const retained = await inspectHistory({ stateDir, runId });
@@ -90,7 +103,7 @@ test('crashed dependency preparation inspects passively and cannot release admis
   }
 });
 
-test('stop, shutdown and the original deadline cancel and drain owner preparation without model work or renewed budgets', { timeout: 40_000 }, async (t) => {
+retainedTest('stop, shutdown and the original deadline cancel and drain owner preparation without model work or renewed budgets', { timeout: 40_000 }, async (t) => {
   for (const scenario of ['stop', 'shutdown', 'deadline']) {
     const { stopped, survivors, observedCount } = await scoped(t, scenario);
     assert.equal(stopped.status, scenario === 'deadline' ? 'failed' : 'stopped');
@@ -104,7 +117,7 @@ test('stop, shutdown and the original deadline cancel and drain owner preparatio
   }
 });
 
-test('run tools accept only a verified bundle and charge fixed read-only checks to the supplied original budget', { timeout: 40_000 }, async (t) => {
+retainedTest('run tools accept only a verified bundle and charge fixed read-only checks to the supplied original budget', { timeout: 40_000 }, async (t) => {
   const { prepared, checks } = await scoped(t, 'tools');
   assert.equal(checks.verification.probe.readOnlyBundle, true);
   for (const check of [checks.vitest, checks.lint]) {
@@ -120,13 +133,13 @@ test('run tools accept only a verified bundle and charge fixed read-only checks 
   assert.ok(checks.budget.reservations.every((item) => item.state === 'settled'));
 });
 
-test('application inspection reports a stale bundle and repeated owner preparation cannot claim success or reinstall it', { timeout: 40_000 }, async (t) => {
+retainedTest('application inspection reports a stale bundle and repeated owner preparation cannot claim success or reinstall it', { timeout: 40_000 }, async (t) => {
   const { prepared } = await scoped(t, 'stale');
   assert.equal(prepared.dependencies.receipt.status, 'prepared');
   assert.equal(prepared.counters.modelAttempts, 0);
 });
 
-test('explicit application preparation saves intent before effects and retains a bundle without resetting the run or executing an agent', { timeout: 40_000 }, async (t) => {
+retainedTest('explicit application preparation saves intent before effects and retains a bundle without resetting the run or executing an agent', { timeout: 40_000 }, async (t) => {
   const { prepared, intentSavedBeforeEffects } = await scoped(t);
   assert.equal(intentSavedBeforeEffects, true);
   assert.equal(prepared.status, 'blocked');

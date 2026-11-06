@@ -27,7 +27,8 @@ async function profile(run, dependencies, kind) {
   const files = {};
   for (const name of ['admission.mjs', 'run-tools.mjs', 'containment.mjs', 'containment-files.mjs',
     'containment-probe.mjs', 'containment-filter.mjs', 'containment-namespace.mjs', 'dependencies.mjs',
-    'dependencies-files.mjs', 'dependencies-lock.mjs', 'model.mjs', 'model-execution.mjs', 'model-transport.mjs', 'model-accounting.mjs',
+    'dependencies-files.mjs', 'dependencies-lock.mjs', 'dependencies-cache.mjs', 'dependencies-graph.mjs',
+    'model.mjs', 'model-execution.mjs', 'model-transport.mjs', 'model-accounting.mjs',
     'executor.mjs', 'executor-policy.mjs', 'executor-artifacts.mjs', 'executor-model.mjs', 'executor-tools.mjs',
     '../docs/agents/change-quality.md', ...(run.qualification ? qualifiedFiles : [])]) {
     files[name] = hash(await readFile(new URL(name, import.meta.url)));

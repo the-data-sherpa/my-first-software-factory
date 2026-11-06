@@ -22,7 +22,7 @@ test('composed admission profile binds the qualified execution modules or fails 
   try {
     const result = await runOwnedScope(t, [worker, root, 'qualified-profile'], { timeout: 60000 });
     drained = true;
-    assert.equal(result.code, 0, result.stderr);
+    assert.equal(result.code, 0, `${result.stderr}\nRetained fixture: ${root}`);
     const evidence = JSON.parse(result.stdout);
     assert.equal(typeof evidence.composedModule, 'boolean');
     if (process.env.FACTORY_ADMISSION_EVIDENCE) await writeFile(`${process.env.FACTORY_ADMISSION_EVIDENCE}/qualified-profile.json`, JSON.stringify({ root, ...evidence }), { mode: 0o600 });

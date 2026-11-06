@@ -135,6 +135,12 @@ try {
     'qualification-selection.mjs', 'qualification-scope.mjs', 'qualification-reporting.mjs', 'qualification-reporter.mjs',
     'work-items.mjs', 'factory.mjs', 'execution.mjs', 'storage.mjs', 'workspace.mjs', 'workspace-git.mjs',
     'containment-lifetime.mjs', 'containment-entry.mjs', 'containment-host-probes.mjs', 'containment-test-profile.mjs'];
+  const assertDependencyImplementation = async binding => {
+    for (const name of ['dependencies-cache.mjs', 'dependencies-graph.mjs']) {
+      assert.equal(binding.executionProfile.implementation[name], createHash('sha256')
+        .update(await readFile(new URL(`../../src/${name}`, import.meta.url))).digest('hex'), name);
+    }
+  };
   const composedModule = await readFile(new URL('../../src/qualified-execution.mjs', import.meta.url)).then(() => true, () => false);
   let composedStates = [];
   const bounded = ['tool-limit', 'model-limit', 'model-drain-report', 'qualified-profile'].includes(scenario) ? { ...wrapped, async start(input) {
@@ -218,6 +224,7 @@ try {
       assert.deepEqual(outputs[0][1], { vitestCli: { resolved: { watch: false, fileParallelism: false, maxWorkers: 1 } } });
       assert.equal(outputs[1].length, 1);
       for (const name of qualifiedFiles) assert.equal(name in result.admission.binding.executionProfile.implementation, false, name);
+      await assertDependencyImplementation(result.admission.binding);
       assert.ok(result.admission.baselines[0].finishedAt <= result.admission.baselines[1].startedAt);
       assert.equal(result.admission.containment.probe.readOnlyBundle, true);
       assert.equal(transport.requests[0].payload.tools?.length ?? 0, 0);
@@ -233,6 +240,7 @@ try {
     } else if (scenario === 'qualified-profile') {
       const bound = composedStates.findLast(state => state.binding)?.binding;
       if (composedModule) {
+        await assertDependencyImplementation(bound);
         // Composed runs bind the qualified execution and qualifier modules in addition to the legacy profile.
         for (const name of qualifiedFiles) {
           assert.equal(bound.executionProfile.implementation[name], createHash('sha256').update(await readFile(new URL(`../../src/${name}`, import.meta.url))).digest('hex'), name);
