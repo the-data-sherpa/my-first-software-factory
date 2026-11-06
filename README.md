@@ -227,6 +227,12 @@ These checks cover process crashes, not host or power failure guarantees.
 Run the combined unit/integration suite with `npm test`, or select `npm run test:phase0` and `npm run test:phase1`.
 The original browser probe remains available through `CHROMIUM_PATH=/usr/bin/chromium npm run test:ui`.
 
+GitHub Actions runs `Phase 0 and JavaScript syntax` on pushes and pull requests under Node 24.21.0,
+after `npm ci --ignore-scripts --no-audit --no-fund`. It runs `npm run test:phase0` with controlled
+providers and checks tracked `.mjs` files with `node --check`. This hosted check does not establish
+Phase 1 containment, browser behavior, live model acceptance, or maintenance readiness.
+The full contained suite and browser proof remain separate local integration requirements.
+
 ## Selected-model preflight
 
 Live acceptance requires a separate owner decision. The commands below can read Pi credentials and send a paid request after admission.
