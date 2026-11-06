@@ -86,4 +86,27 @@ The same regression passed after the change, including retained evidence and off
 Four focused application/executor cases then passed, including fabricated-success and scope-expansion refusals.
 All six recorded scopes, including the red reproduction, were inactive with no remaining processes.
 Syntax, whitespace, documentation links, and unchanged package/runtime checks passed.
-Full verification and the requested independent Opus 5.5 review remain pending at this checkpoint.
+At implementation commit `708fe192b9a5f818ec580da25c2c5b71fd553ee2`, full verification passed under Node 24.21.0:
+
+- `npm test`: 274/274, with no skips or exclusions.
+- `CHROMIUM_PATH=/usr/bin/chromium npm run test:ui`: 1/1.
+- All 159 parent-recorded exact scopes were inactive with no remaining processes, including the red reproduction.
+- Syntax checks for all source/test scripts, whitespace, local documentation links, and unchanged package/runtime checks passed.
+- The edited guidance passed the strict prose linter thresholds with zero banned-term hits.
+
+The existing draft cases now also test policy delivery and retention. The test count did not increase.
+Private logs and scope audits are retained under `/tmp/factory-quality-guidance-evidence/`.
+These results do not establish production-model compliance with the prose or real-toolchain readiness.
+
+### Independent review blocked
+
+Two isolated review attempts selected provider `pi` and model `anthropic/claude-opus-5-5`.
+Both failed during provider authentication before producing a review.
+The Standards and Spec axes are unexamined by Opus, not clean or approved.
+The same-route sibling task was stopped after the first failure. It had already failed with the same authentication blocker.
+No provider or model substitution occurred, and no retry loop remains active.
+The owner must renew Anthropic authentication in Pi before fresh review tasks can proceed.
+The owner confirmed that Opus 5.5 inside Pi is the required route.
+
+The implementation remains on the local `feat/shared-quality-guidance` branch pending that review.
+No push, tracker mutation, factory production-model request, or real Vanguard operation occurred.
