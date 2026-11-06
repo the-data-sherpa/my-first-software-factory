@@ -125,7 +125,8 @@ function platform(value, key) {
   if (!Array.isArray(values) || !values.length || new Set(values).size !== values.length || values.some((item) => !platforms[key].includes(item))) fail();
   return values;
 }
-const binPath = (path) => typeof path === 'string' && /^(?:\.\/)?[A-Za-z0-9_./-]+$/.test(path) && !path.split('/').includes('..');
+const binPath = (path) => typeof path === 'string' && !path.startsWith('/')
+  && /^(?:\.\/)?[A-Za-z0-9_./-]+$/.test(path) && !path.split('/').includes('..');
 function metadata(value) {
   only(value, ['dependencies', 'optionalDependencies', 'peerDependencies', 'optionalPeers', 'os', 'cpu', 'bin']);
   const edges = {};
@@ -211,8 +212,8 @@ export function registryPlan(manifest, lock) {
       else unmetPeers.push({ placement: key, peer: name, range: spec, provider, version: packages.get(provider).entry.version });
     }
   }
-  // Bun installs an out-of-range hoisted peer with only a warning. Such an edge never causes acquisition:
-  // its provider must already be planned through satisfied relationships, and the mismatch is recorded.
+  // Unapproved compatibility candidate: an out-of-range peer never causes acquisition.
+  // Its provider must already be planned through satisfied relationships; pinned-Bun proof and an owner policy decision remain required.
   for (const { provider } of unmetPeers) if (!planned.has(provider)) fail();
   // Optional peers are constraints only: a locked provider must be installed here and satisfy the declared range.
   for (const key of planned) {

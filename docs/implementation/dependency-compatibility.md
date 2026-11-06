@@ -6,7 +6,9 @@ It does not establish real archive availability, sizes, native-package behavior,
 
 ## Status
 
-- **Admission:** implemented and verified through the public seam with authored fixtures and the captured lock bytes as data.
+**Blocked partial checkpoint, not accepted or integrated.** Required-peer tolerance is an unapproved policy candidate. Pinned-Bun behavior and archive normalization remain unverified. Passing admission tests do not resolve those gates.
+
+- **Admission:** candidate behavior implemented and exercised through the public seam with authored fixtures and the captured lock bytes as data.
 - **Pinned Bun behavior:** not yet established. Bun fixture work waits for the exclusive heavy-test slot. See [Pending Bun fixture work](#pending-bun-fixture-work).
 - **Archive check during acquisition:** implemented and not yet exercised. It runs only after the Bun script-suppression proof, so it needs the heavy slot.
 
@@ -55,7 +57,7 @@ Every relationship resolves with the existing hoisted ancestor lookup over lock 
    - host-applicable `optionalDependencies`.
 
    Each edge must satisfy its range. A planned placement must be host-applicable, so a required dependency or required peer on a non-host package refuses.
-2. **Unmet peers.** Bun installs an out-of-range hoisted peer with only a warning. Such an edge never causes acquisition. Its provider must already be planned through satisfied edges. The intent records each mismatch as `{ placement, peer, range, provider, version }`.
+2. **Unmet peers: unapproved candidate.** Whether Bun 1.3.14 preserves this locked layout and accepts it is unverified. The current candidate allows an out-of-range peer only when its provider is already planned through satisfied edges, and records `{ placement, peer, range, provider, version }`. This does not authorize a new archive. Generic tolerance is held for a separate owner-policy decision after controlled Bun evidence; it is not an accepted factory rule.
 3. **Optional peers.** These are constraints only. A provider that is absent is ignored. A provider that is present must be planned and satisfy the range.
 4. **Excluded.** A non-host optional target, and every placement reached only from it, is locked but not installed on this host. Its edges must still resolve and satisfy their ranges. The intent lists the excluded placement keys.
 5. **Orphans.** A placement that is neither planned nor excluded refuses. This includes platform-shaped entries with no optional edge.
@@ -134,8 +136,22 @@ The heavy-test slot is required. Use controlled packages and loopback only:
 ## Open decisions
 
 - **`libc`:** the captured lock has no `libc` data, so the planner includes musl variants such as `@img/sharp-linuxmusl-x64` for linux/x64. Their published archives are expected to declare `libc`, which the archive check refuses. Whether Bun 1.3.14 installs those entries determines the choice: plan them and accept a bounded `libc` field, or exclude them. This needs Bun fixture evidence and may need an owner decision.
-- **Unmet peers:** rule 2 accepts a legitimate lock state that Bun tolerates, and it records each instance. Requiring every peer to satisfy its range would refuse the captured lock.
+- **Unmet peers:** rule 2 tolerates an internally unsatisfied required-peer relationship in the captured layout. Bun tolerance is a hypothesis, not an observed fact. The independent source/data investigation in `/tmp/factory-compat-peer-investigation-RixWNH/REPORT.md` confirms that the locked root `ajv-keywords@5.1.0` resolves `ajv@6.12.6`, outside `^8.8.2`; it found no concrete authority bypass. No owner permission for generic tolerance has been granted.
+- **Archive normalization:** the same investigation found 64 planned identities whose peer/optional metadata differs between the Bun lock and same-version npm-lock records. If published archives match the npm records, the candidate archive equality checks would refuse. This is a conditional data finding, not executed acquisition or proof about real archives. Pinned-Bun authored-package probes must establish the supported encoding before corrections; do not merely ignore peers.
 - **Captured-lock regression:** the 258 KB captured lock is not committed as a test fixture. Committed tests use authored equivalent shapes.
+
+## Parent correction: absolute bin paths
+
+The parent inspected the read-only adversarial matrix at `/tmp/factory-compat-dependency-adversarial-Rpyx3V/report.md` and reproduced an input-admission defect through `admitDependencies`: both string and object `bin` forms admitted `/usr/bin/x`, contrary to the safe-relative-path requirement. The object-form pattern predates this batch; extending it to strings exposed the same gap. This is not a demonstrated sandbox escape.
+
+The validator now rejects a leading `/` in either form. No authority, limit, toolchain pin, or peer policy changed. Evidence is retained at `/tmp/factory-vanguard-compatibility-aIwVNC/`:
+
+- `bin-path-red.log` and `bin-path-probe.json`: relative control admitted, absolute string path admitted unexpectedly; probe exit 1. Exact failed fixture `/tmp/factory-dependency-compatibility-mAKfXF` retained. The relative control's disposable fixture was removed.
+- `bin-tests-red.log`: both retained public-interface regressions fail before the fix; 0/2 pass, exit 1.
+- `bin-tests-green.log`: the full admission-only compatibility file passes 57/57 after the fix, exit 0.
+- `bin-tests-final-green.log`: final 57-case recheck after correcting unverified Bun wording in the source/test label, recorded separately from the causal red/green.
+
+These are ordinary disposable admission fixtures with synchronous native Git setup, not contained preparation. No Bun, scoped runner, download, model, or target code was executed. They do not consume or transfer the exclusive heavy slot. The new 57-case result is not a full factory-suite result and does not approve the peer candidate. Existing fixture teardown removes the two selected test-run roots; the separately retained failed probe preserves its input and state.
 
 ## Integration needs (parent)
 

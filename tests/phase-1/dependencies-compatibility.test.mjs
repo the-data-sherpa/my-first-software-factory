@@ -75,7 +75,7 @@ test('only host-applicable optional platform packages are planned; non-host opti
   assert.deepEqual(f.intent.acquisition.excluded, ['@img/libvips-darwin-arm64', '@img/native-darwin-arm64', '@img/native-riscv64']);
 });
 
-test('a hoisted out-of-range peer that Bun installs with a warning is recorded and never causes acquisition', async (t) => {
+test('the unapproved out-of-range peer candidate records its mismatch without adding an archive', async (t) => {
   const f = await admit(t, lockFixture({ dependencies: { linter: '^9.0.0', bundler: '^5.0.0' }, placements: [
     leaf('linter', '9.39.2', { dependencies: { ajv: '^6.12.4' } }), leaf('ajv', '6.12.6'),
     leaf('bundler', '5.105.4', { dependencies: { 'schema-utils': '^4.3.3' } }),
@@ -100,6 +100,8 @@ test('the unmodified refusal base graph is admitted, so each refusal below is ca
 });
 const refusals = {
   'unknown metadata key': (l) => { l.placements[1][2].libc = ['glibc']; },
+  'absolute string bin path': (l) => { l.placements[1][2].bin = '/usr/bin/x'; },
+  'absolute object bin path': (l) => { l.placements[1][2].bin = { command: '/usr/bin/x' }; },
   'unknown platform value': (l) => { l.placements[2][2].os = 'netbsd'; },
   'negated platform value': (l) => { l.placements[2][2].os = '!win32'; },
   'empty platform list': (l) => { l.placements[2][2].cpu = []; },
