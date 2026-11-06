@@ -16,7 +16,12 @@ export const SELECTION = Object.freeze({
 export const selectedTest = `import { test, expect } from '/work/node_modules/vitest/dist/index.js';
 import { normalizeAddress } from '/work/convex/syncHelpers.ts';
 const cases = ${JSON.stringify(SELECTION.cases)};
-for (const item of cases) test(item.id, () => { expect(normalizeAddress(item.input)).toBe(item.expected); });
+for (const item of cases) test(item.id, () => {
+  const actual = normalizeAddress(item.input);
+  expect(actual).toBe(item.expected);
+  // Object.is behind toBe is mutable shared state; typeof and === are not.
+  if (typeof actual !== 'string' || actual !== item.expected) throw new Error('Strict string equality failed after toBe.');
+});
 `;
 const bad = () => { throw Object.assign(new Error('The executed candidate or oracle does not establish the selected regression.'), { code: 'REGRESSION_UNVERIFIED' }); };
 export function regressionEvidence(result, phase) {

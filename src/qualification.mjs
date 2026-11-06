@@ -15,6 +15,18 @@ const implementationFiles = ['qualification.mjs', 'qualification-artifacts.mjs',
 async function implementation() {
   return Object.fromEntries(await Promise.all(implementationFiles.map(async name => [name, hash(await readFile(new URL(name, import.meta.url)))])));
 }
+// The accepted executor profile binds factory modules plus exactly one
+// factory-owned policy document. Any other parent-relative key is refused.
+const QUALITY_POLICY = '../docs/agents/change-quality.md';
+async function profileImplementation(files) {
+  if (!files || typeof files !== 'object' || Array.isArray(files) || !Object.hasOwn(files, QUALITY_POLICY)) fail('QUALIFICATION_INVALIDATED');
+  for (const [name, expected] of Object.entries(files)) {
+    if ((name !== QUALITY_POLICY && !/^[a-z-]+\.mjs$/.test(name)) || typeof expected !== 'string') fail('QUALIFICATION_INVALIDATED');
+    const bytes = await readFile(new URL(name === QUALITY_POLICY ? QUALITY_POLICY : `./${name}`, import.meta.url))
+      .catch(() => fail('QUALIFICATION_INVALIDATED'));
+    if (hash(bytes) !== expected) fail('QUALIFICATION_INVALIDATED');
+  }
+}
 function artifactPath(directory, receipt) {
   const path = relative(directory, receipt ?? '');
   if (!/^(?:checks|qualification\/(?:base-checks|candidate-base-checks|draft-checks))\/check-[a-f0-9-]{36}\/result\.json$/.test(path)) fail('QUALIFICATION_ARTIFACT_INVALID');
@@ -64,9 +76,7 @@ async function prerequisites(directory, run, dependencyRun, descriptor) {
     || !same(binding.executionProfile.toolchain, deps.intent.toolchain)
     || hash(JSON.stringify(binding.executionProfile)) !== binding.profileDigest
     || !same(binding.executionProfile.limits, run.limits) || binding.executionProfile.kind !== descriptor.kind) fail('QUALIFICATION_INVALIDATED');
-  for (const [name, expected] of Object.entries(binding.executionProfile.implementation)) {
-    if (!/^[a-z-]+\.mjs$/.test(name) || hash(await readFile(new URL(name, import.meta.url))) !== expected) fail('QUALIFICATION_INVALIDATED');
-  }
+  await profileImplementation(binding.executionProfile.implementation);
   const baselines = run.admission.baselines;
   if (!Array.isArray(baselines) || baselines.length !== 2 || baselines[0].name !== 'vitest' || baselines[1].name !== 'lint'
     || baselines[0].finishedAt > baselines[1].startedAt) fail('QUALIFICATION_BASELINE_REQUIRED');
@@ -125,12 +135,16 @@ export function createDraftQualification({ verifyDraft } = {}) {
       const shutdown = new AbortController();
       const combined = AbortSignal.any([signal, budget.signal, shutdown.signal].filter(Boolean));
       let tools; let closing; let timer; let drainFailure; let settled = false;
+      // Stage reservations whose operation was entered. Others are provably never dispatched.
+      const reservations = new Map(); const dispatched = new Set();
       let state = { version: 1, runId: run.id, kind: run.admission?.kind, status: 'checking', reviewReady: false,
         stage: 'intent', selection: structuredClone(SELECTION), checks: [], artifacts: { directory: 'qualification', patch: null, complete: false } };
       const persist = async patch => {
         state = { ...state, ...patch };
         await save(join(root, 'state.json'), state);
-        saveQualification(structuredClone(state));
+        const result = saveQualification(structuredClone(state));
+        // The projection callback is synchronous; a promise cannot confirm persistence.
+        if (typeof result?.then === 'function') { Promise.resolve(result).catch(() => {}); fail('QUALIFICATION_PERSIST_FAILED'); }
       };
       const active = () => { budget.assertActive(); if (combined.aborted) fail('RUN_STOPPING'); };
       async function drain() {
@@ -143,10 +157,11 @@ export function createDraftQualification({ verifyDraft } = {}) {
           await persist({}); // Saved selection and stage intent before capture/check effects.
           active();
           timer = setTimeout(() => shutdown.abort(), Math.max(0, budget.deadlineAt - Date.now()));
-          const captureReservation = budget.reserveToolRound({ roundId: 'qualification:capture' });
+          reservations.set('capture', budget.reserveToolRound({ roundId: 'qualification:capture' }));
           await persist({ stage: 'capture' });
+          active(); dispatched.add('capture');
           const capture = await captureDraft(directory, run, combined);
-          budget.settle(captureReservation.id, JSON.stringify({ patchDigest: capture.patchDigest }));
+          budget.settle(reservations.get('capture').id, JSON.stringify({ patchDigest: capture.patchDigest }));
           await persist({ capture, artifacts: { directory: 'qualification', patch: 'qualification/patch.json', complete: true } });
           active();
           if (run.executor?.status && run.executor.status !== 'draft-produced') {
@@ -161,12 +176,12 @@ export function createDraftQualification({ verifyDraft } = {}) {
             if (!scope(capture, descriptor)) outcome = verdict(run, 'no-change', 'NO_CHANGE');
             else {
               await verifyHelperScope(directory);
-              const reservations = new Map();
               for (const name of stages) {
                 active(); reservations.set(name, budget.reserveToolRound({ roundId: `qualification:${name}` }));
               }
               const check = async (name, operation) => {
                 active(); await persist({ stage: name });
+                dispatched.add(name);
                 const result = await operation();
                 // The runner retains full receipts before qualification records any verdict.
                 await persist({ checks: [...state.checks, { stage: name, ...result }] });
@@ -216,11 +231,27 @@ export function createDraftQualification({ verifyDraft } = {}) {
           }
         } catch (error) {
           if (isDrain(error)) drainFailure = error;
-          const reason = error.code ?? 'QUALIFICATION_FAILED';
+          let reason = error.code ?? 'QUALIFICATION_FAILED';
+          // An effect cancelled by an actual stop/deadline reports that cause, not
+          // its own cancellation code (for example WORKSPACE_CANCELLED in capture).
+          if (!isDrain(error) && combined.aborted && !['RUN_STOPPING', 'RUN_DEADLINE'].includes(reason)) {
+            try { budget.assertActive(); reason = 'RUN_STOPPING'; } catch (cause) { reason = cause.code === 'RUN_DEADLINE' ? 'RUN_DEADLINE' : 'RUN_STOPPING'; }
+          }
           outcome = verdict(run, isDrain(error) ? 'interrupted' : reason === 'RUN_STOPPING' ? 'stopped'
             : reason === 'RUN_DEADLINE' ? 'failed' : 'blocked', reason);
         } finally {
           try { await drain(); } catch (error) { drainFailure = error; outcome = verdict(run, 'interrupted', error.code); }
+          // Only after confirmed drainage: close reservations that no operation ever
+          // entered. They stay counted (no refund). Entered-but-unsettled rounds remain
+          // uncertain, as does everything after a drain failure.
+          if (!drainFailure) {
+            for (const [name, reservation] of reservations) {
+              if (dispatched.has(name)) continue;
+              try {
+                budget.settle(reservation.id, JSON.stringify({ stage: name, dispatched: false, reason: outcome.reason ?? outcome.status }));
+              } catch { /* An unsettled reservation remains conservatively uncertain. */ }
+            }
+          }
         }
         const finalFreshness = async () => {
           try {
@@ -249,9 +280,12 @@ export function createDraftQualification({ verifyDraft } = {}) {
         return { ...outcome, artifacts: structuredClone(state.artifacts) };
       })();
       finished.catch(() => {});
+      // cancel/close confirm drainage only. A non-drain reporting error stays on
+      // `finished`; drain failures are sticky and reject here too.
+      const drained = async () => { await finished.catch(error => { if (isDrain(error)) throw error; }); await drain(); };
       return Object.freeze({ finished,
-        async cancel() { shutdown.abort(); await finished; await drain(); },
-        close() { return closing ??= (async () => { if (!settled) shutdown.abort(); try { await finished; } finally { await drain(); } })(); },
+        async cancel() { shutdown.abort(); await drained(); },
+        close() { return closing ??= (async () => { if (!settled) shutdown.abort(); await drained(); })(); },
       });
     },
     async inspect({ directory, run, dependencyRun }) {
@@ -261,7 +295,10 @@ export function createDraftQualification({ verifyDraft } = {}) {
         await validateWorkspace(directory, run);
         state = await json(directory, 'qualification/state.json', 16 * 1024 * 1024);
         if (state.version !== 1 || state.runId !== run.id || state.kind !== run.admission?.kind
-          || !same(state, run.qualification)) fail('QUALIFICATION_ARTIFACT_INVALID');
+          || !same(state, run.qualification) || !Array.isArray(state.checks)) fail('QUALIFICATION_ARTIFACT_INVALID');
+        // A qualified verdict stands only on its full retained evidence.
+        if (state.verdict?.status === 'qualified' && (!state.descriptor || !state.capture || !state.runtime || !state.implementation
+          || state.stage !== 'complete' || state.status !== 'qualified' || !same(state.checks.map(c => c.stage), stages))) fail('QUALIFICATION_INVALIDATED');
         if (state.capture) await verifyCaptured(directory, run, state.capture);
         if (state.descriptor) {
           await prerequisites(directory, run, dependencyRun, state.descriptor);

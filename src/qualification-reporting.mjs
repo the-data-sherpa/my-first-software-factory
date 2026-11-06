@@ -14,7 +14,7 @@ export function reportConfig(operation) {
   const file = operation === 'runner-probe' ? '/verification/probe.test.mjs'
     : operation === 'selected-regression' ? '/verification/selected.test.mjs' : '/work/lib/__tests__/normalize-address.test.ts';
   return `export default { root: '/work', cacheDir: '/tmp/factory-vitest', test: { include: [${JSON.stringify(file)}], environment: 'node',
-    watch: false, maxWorkers: 2, fileParallelism: false, isolate: true, retry: 0, allowOnly: false,
+    watch: false, pool: 'forks', maxWorkers: 2, fileParallelism: false, isolate: true, retry: 0, allowOnly: false,
     passWithNoTests: false, expect: { requireAssertions: true } } };\n`;
 }
 export function reportFiles(operation, selectedTest) {
@@ -35,7 +35,7 @@ export function parseReport(result) {
     report = JSON.parse(frame.subarray(newline + 1, -1).toString());
     if (report.protocol !== protocol || JSON.stringify(report.binding) !== JSON.stringify(result.reportBinding)
       || report.runtime?.node !== '24.21.0' || report.runtime.vitest !== '4.0.17'
-      || report.runtime.maxWorkers !== 1 || report.runtime.fileParallelism !== false
+      || report.runtime.maxWorkers !== 1 || report.runtime.fileParallelism !== false || report.runtime.pool !== 'forks'
       || !/^[a-f0-9]{64}$/.test(report.runtime.manifestDigest) || !Array.isArray(report.files) || !report.files.length
       || !Array.isArray(report.errors) || report.errors.length || !Array.isArray(report.cases) || !report.cases.length
       || !['passed', 'failed'].includes(report.reason) || result.exitSignal !== null

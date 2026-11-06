@@ -13,6 +13,9 @@ for (const scenario of ['green', 'candidate-tautology', 'candidate-unrelated', '
   'probe-empty-passes', 'probe-skips-run', 'runner-worker-count', 'runner-file-parallelism', 'final-missing-candidate', 'final-renamed-candidate',
   'stale-overlay', 'stale-candidate', 'stale-report', 'stop-finalization',
   'stale-source', 'stale-patch', 'stale-test', 'stale-toolchain', 'stale-check', 'stale-profile', 'missing-new-file',
+  'policy-live', 'policy-passive', 'module-live', 'module-passive', 'qualifier-module-passive', 'composed-modules', 'composed-missing',
+  'profile-traversal', 'profile-policy-absent', 'object-is-gaming', 'helper-unsupported', 'async-save',
+  'stop-capture', 'stop-during-capture', 'forged-state', 'runner-pool-threads', 'final-pool-threads',
   'late-source', 'tool-limit', 'stop', 'deadline', 'report-failure', 'drain-report', 'crash-inspect']) {
   test(`independent draft qualification through trusted execution: ${scenario}`, async t => {
     const root = await mkdtemp('/tmp/factory-dependencies-');

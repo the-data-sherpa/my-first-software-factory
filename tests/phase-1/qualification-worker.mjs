@@ -1,19 +1,48 @@
-import { createDraftQualification } from '../../src/qualification.mjs';
 import assert from 'node:assert/strict';
-import { writeFile, readFile, chmod, unlink } from 'node:fs/promises';
+import { writeFile, readFile, chmod, unlink, cp, mkdir, symlink, realpath, appendFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { writeFileSync, chmodSync } from 'node:fs';
-import { openFactory } from '../../src/factory.mjs';
-import { admitWorkspace, prepareWorkspace } from '../../src/workspace.mjs';
-import { createAdmissionExecution, verifyAdmissionHandoff } from '../../src/admission.mjs';
-import { sourceFingerprint } from '../../src/containment-files.mjs';
-import { createRunTools } from '../../src/run-tools.mjs';
-import { verifyDependencyBundle } from '../../src/dependencies.mjs';
+import { writeFileSync, chmodSync, appendFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { qualificationProject, draftHelper, draftTest, candidateTest } from '../fixtures/qualification-project.mjs';
 import { controlledRuntime, controlledTransport, eventsResponse } from './model-fixtures.mjs';
 import { until } from '../phase-0/helpers.mjs';
 
 const [root, scenario] = process.argv.slice(2);
+// Policy/profile scenarios run a disposable copy of the factory modules and its
+// fixed quality policy, so edits never touch the repository under test.
+const copied = { 'policy-live': null, 'policy-passive': null, 'module-live': null, 'module-passive': null, 'qualifier-module-passive': null,
+  'composed-modules': ["'../docs/agents/change-quality.md']", "'../docs/agents/change-quality.md', 'qualification.mjs', 'qualification-selection.mjs']"],
+  'composed-missing': ["'../docs/agents/change-quality.md']", "'../docs/agents/change-quality.md', 'qualified-execution.mjs']"],
+  'profile-traversal': ["'../docs/agents/change-quality.md']", "'../docs/agents/change-quality.md', '../package.json']"],
+  'profile-policy-absent': ["'executor-tools.mjs',\n    '../docs/agents/change-quality.md']", "'executor-tools.mjs']"] };
+const factoryRoot = join(root, 'factory');
+let modules = new URL('../../src/', import.meta.url);
+if (Object.hasOwn(copied, scenario)) {
+  const repository = fileURLToPath(new URL('../../', import.meta.url));
+  await cp(join(repository, 'src'), join(factoryRoot, 'src'), { recursive: true });
+  await mkdir(join(factoryRoot, 'docs/agents'), { recursive: true });
+  await cp(join(repository, 'docs/agents/change-quality.md'), join(factoryRoot, 'docs/agents/change-quality.md'));
+  await cp(join(repository, 'package.json'), join(factoryRoot, 'package.json'));
+  await symlink(await realpath(join(repository, 'node_modules')), join(factoryRoot, 'node_modules'));
+  if (copied[scenario]) {
+    const path = join(factoryRoot, 'src/admission.mjs');
+    const [from, to] = copied[scenario];
+    const source = await readFile(path, 'utf8');
+    assert.ok(source.includes(from), 'Admission profile fixture anchor changed.');
+    await writeFile(path, source.replace(from, to));
+  }
+  if (scenario === 'composed-missing') await writeFile(join(factoryRoot, 'src/qualified-execution.mjs'), 'export {};\n');
+  modules = new URL(`file://${factoryRoot}/src/`);
+}
+const load = name => import(new URL(name, modules).href);
+const { createDraftQualification } = await load('qualification.mjs');
+const { openFactory } = await load('factory.mjs');
+const { admitWorkspace, prepareWorkspace } = await load('workspace.mjs');
+const { createAdmissionExecution, verifyAdmissionHandoff } = await load('admission.mjs');
+const { sourceFingerprint } = await load('containment-files.mjs');
+const { createRunTools } = await load('run-tools.mjs');
+const { verifyDependencyBundle } = await load('dependencies.mjs');
+const policyPath = join(factoryRoot, 'docs/agents/change-quality.md');
 globalThis.fetch = async () => { throw new Error('Uncontrolled network forbidden'); };
 const fixture = await qualificationProject(root, ['stop', 'deadline', 'drain-report', 'crash-inspect'].includes(scenario) ? 'slow' : scenario);
 const stateDir = fixture.workspaceIntent.stateDir;
@@ -40,12 +69,16 @@ const execution = { ...admission, async start(input) {
     const tools = await createRunTools({ ...input, run, dependencyBundle: await verifyDependencyBundle(dependencyRun.dependencies.intent, { workspaceIntent: run.workspace.intent }) });
     try {
       if (scenario !== 'no-change') {
-        await tools.write('convex/syncHelpers.ts', scenario === 'unchanged-helper' ? draftHelper.replace(".replace(/\\s+/g, ' ').trim();", ';') : draftHelper);
+        await tools.write('convex/syncHelpers.ts', scenario === 'unchanged-helper' ? draftHelper.replace(".replace(/\\s+/g, ' ').trim();", ';')
+          // Stream E probe: mutating shared Object.is made toBe pass for an unchanged address.
+          : scenario === 'object-is-gaming' ? 'export function normalizeAddress(address) {\n  Object.is = () => true; return address;\n}\n'
+          : scenario === 'helper-unsupported' ? draftHelper.replace(".trim();", ".replace(/x/g, () => '').trim();") : draftHelper);
         await tools.write('lib/__tests__/normalize-address.test.ts', candidateTest(scenario));
       }
       if (scenario === 'wrong-scope') await tools.write('unrelated.mjs', 'export const unrelated = true;');
       if (scenario === 'same-helper-scope') await tools.write('convex/syncHelpers.ts', `${draftHelper}export const unrelated = true;\n`);
     } finally { await tools.close(); }
+    if (scenario === 'composed-missing') await unlink(join(factoryRoot, 'src/qualified-execution.mjs'));
     if (scenario === 'deleted-file') await unlink(join(run.workspace.intent.worktree, 'lib/__tests__/existing.test.ts'));
     if (scenario === 'mode-change') await chmod(join(run.workspace.intent.worktree, 'convex/syncHelpers.ts'), 0o700);
     if (scenario === 'hidden-change') await writeFile(join(run.workspace.intent.worktree, '.env'), 'changed synthetic fixture only');
@@ -67,7 +100,7 @@ const execution = { ...admission, async start(input) {
     } });
     retainedRun = run;
     if (scenario === 'missing') await unlink(join(dependencyRun.workspace.intent.stateDir, 'runs', dependencyRun.id, 'dependencies', dependencyRun.dependencies.intent.id, 'result.json'));
-    if (scenario === 'tool-limit') for (let i = 0; i < 20; i++) input.budget.settle(input.budget.reserveToolRound({ roundId: `prior:${i}` }).id, 'Controlled earlier work, not a replenished budget.');
+  if (scenario === 'tool-limit') for (let i = 0; i < 20; i++) input.budget.settle(input.budget.reserveToolRound({ roundId: `prior:${i}` }).id, 'Controlled earlier work, not a replenished budget.');
     const cancelled = new AbortController();
     let expired = false; let scheduled = false; let fault;
     const budget = scenario === 'deadline' ? { ...input.budget, assertActive() {
@@ -76,8 +109,12 @@ const execution = { ...admission, async start(input) {
     } } : input.budget;
     handle = await qualifier.start({ ...input, run, dependencyRun, budget, signal: AbortSignal.any([input.signal, cancelled.signal]), saveQualification(state) {
       run.qualification = state;
+      if (state.stage === 'candidate-base-regression' && scenario === 'policy-live') appendFileSync(policyPath, '\nControlled policy edit.\n');
+      if (state.stage === 'candidate-base-regression' && scenario === 'module-live') appendFileSync(join(factoryRoot, 'src/executor.mjs'), '\n// Controlled module edit.\n');
       if (scenario === 'late-source' && state.checks.at(-1)?.stage === 'lint') writeFileSync(join(run.workspace.intent.worktree, 'late.mjs'), 'edit after final lint');
       if (scenario === 'stop-finalization' && state.stage === 'complete') cancelled.abort();
+      if (scenario === 'stop-capture' && state.stage === 'capture') cancelled.abort();
+      if (scenario === 'stop-during-capture' && state.stage === 'capture' && !scheduled) { scheduled = true; setTimeout(() => cancelled.abort(), 0); }
       if (scenario === 'candidate-stale-live' && state.stage === 'candidate-base-regression') {
         chmodSync(join(input.directory, 'qualification/candidate-base/lib/__tests__/normalize-address.test.ts'), 0o600);
         writeFileSync(join(input.directory, 'qualification/candidate-base/lib/__tests__/normalize-address.test.ts'), candidateTest('candidate-tautology'));
@@ -97,6 +134,7 @@ const execution = { ...admission, async start(input) {
         fault.catch(() => {});
       }
       if (['report-failure', 'drain-report'].includes(scenario) && state.stage === 'complete') throw new Error('Controlled report write failure');
+      if (scenario === 'async-save') return Promise.reject(new Error('Controlled asynchronous projection'));
     } });
     if (scenario === 'drain-report') {
       await assert.rejects(handle.finished, { code: 'DRAIN_FAILED' });
@@ -108,16 +146,18 @@ const execution = { ...admission, async start(input) {
       completed.resolve();
       throw Object.assign(new Error('Retain ownership'), { code: 'DRAIN_FAILED' });
     }
-    if (scenario === 'report-failure') {
-      await assert.rejects(handle.finished, /Controlled report/);
-      await assert.rejects(handle.close(), /Controlled report/);
-      // The application fixture handles a reporting error only after successful drainage.
-      handle = undefined;
+    if (['report-failure', 'async-save'].includes(scenario)) {
+      await assert.rejects(handle.finished, scenario === 'async-save' ? { code: 'QUALIFICATION_PERSIST_FAILED' } : /Controlled report/);
+      // Drainage succeeded, so close/cancel confirm it; only drain failures reject there.
+      await handle.close(); await handle.cancel();
       final = run.qualification.verdict;
     } else { final = await handle.finished; await handle.close(); }
     assert.equal(final.reviewReady, false);
-    const green = ['green', 'owner-advance', 'executable-base', 'candidate-valid-literal'].includes(scenario) || scenario.startsWith('stale-') || ['missing-new-file'].includes(scenario);
-    const expected = green ? 'qualified' : { 'no-change': 'no-change', stop: 'stopped', 'stop-finalization': 'stopped', deadline: 'failed', incomplete: 'failed', 'report-failure': 'failed' }[scenario] ?? 'blocked';
+    // Qualifies only when the executed final-suite argv pins --pool=forks over the repository's threads config.
+    const pinnedPool = scenario === 'final-pool-threads' && /"cliPool":"forks"/.test(run.qualification.checks.find(c => c.stage === 'vitest')?.output ?? '');
+    const green = pinnedPool || ['forged-state', 'green', 'owner-advance', 'executable-base', 'candidate-valid-literal'].includes(scenario) || scenario.startsWith('stale-')
+      || ['missing-new-file', 'policy-passive', 'module-passive', 'qualifier-module-passive', 'composed-modules'].includes(scenario);
+    const expected = green ? 'qualified' : { 'no-change': 'no-change', stop: 'stopped', 'stop-finalization': 'stopped', 'stop-capture': 'stopped', 'stop-during-capture': 'stopped', deadline: 'failed', incomplete: 'failed', 'report-failure': 'failed', 'async-save': 'failed' }[scenario] ?? 'blocked';
     assert.equal(final.status, expected, JSON.stringify(final));
     if (scenario === 'stale-source') await writeFile(join(run.workspace.intent.worktree, 'late.mjs'), 'late');
     if (scenario === 'stale-patch') await writeFile(join(input.directory, 'qualification/patch.json'), JSON.stringify({ complete: true, changes: [] }));
@@ -137,6 +177,17 @@ const execution = { ...admission, async start(input) {
     if (scenario === 'stale-toolchain') await chmod(`${root}/bun`, 0o700);
     if (scenario === 'stale-check') await writeFile(run.qualification.checks.at(-1).receipt.replace('result.json', 'output.log'), 'different log');
     if (scenario === 'stale-profile') run.limits.toolRounds = 31;
+    if (scenario === 'policy-passive') await appendFile(policyPath, '\nControlled policy edit.\n');
+    if (scenario === 'module-passive') await appendFile(join(factoryRoot, 'src/executor.mjs'), '\n// Controlled module edit.\n');
+    if (scenario === 'qualifier-module-passive') await appendFile(join(factoryRoot, 'src/qualification-scope.mjs'), '\n// Controlled module edit.\n');
+    if (scenario === 'forged-state') {
+      // Matching persisted state and verdict, but none of the evidence behind it.
+      const { descriptor, capture, checks, runtime, implementation, ...rest } = run.qualification;
+      const forged = { ...rest, checks: [] };
+      const path = join(input.directory, 'qualification/state.json');
+      await chmod(path, 0o600); await writeFile(path, JSON.stringify(forged));
+      run.qualification = forged;
+    }
     if (scenario === 'missing-new-file') {
       const path = join(input.directory, 'qualification/draft/lib/__tests__/normalize-address.test.ts');
       await unlink(path);
@@ -144,9 +195,25 @@ const execution = { ...admission, async start(input) {
     const before = callbackCalls;
     passive = await qualifier.inspect({ directory: input.directory, run, dependencyRun });
     assert.equal(callbackCalls, before, 'Inspection cannot call the trusted authority callback.');
-    if (scenario.startsWith('stale-') || scenario === 'missing-new-file') assert.equal(passive.artifactStatus, 'invalid');
+    if (scenario.startsWith('stale-') || ['forged-state', 'missing-new-file', 'policy-passive', 'module-passive', 'qualifier-module-passive'].includes(scenario)) {
+      assert.equal(passive.artifactStatus, 'invalid');
+      assert.equal(passive.status, 'blocked'); assert.equal(passive.recordedStatus, 'qualified'); assert.equal(passive.reviewReady, false);
+    }
+    if (['policy-live', 'module-live', 'composed-missing', 'profile-traversal', 'profile-policy-absent'].includes(scenario)) {
+      assert.equal(final.reason, 'QUALIFICATION_INVALIDATED');
+      assert.equal(passive.artifactStatus, 'invalid');
+    }
+    if (scenario === 'profile-traversal') assert.ok(Object.hasOwn(run.qualification.descriptor.admissionBinding.executionProfile.implementation, '../package.json'));
+    if (scenario === 'composed-modules') {
+      assert.equal(passive.status, 'qualified'); assert.equal(passive.artifactStatus, 'verified');
+      assert.ok(Object.hasOwn(run.qualification.descriptor.admissionBinding.executionProfile.implementation, 'qualification.mjs'));
+    }
     if (['stop', 'deadline', 'tool-limit', 'wrong-scope', 'final-lint', 'final-vitest'].includes(scenario)) assert.equal(run.qualification.artifacts.complete, true);
-    if (scenario === 'report-failure') assert.equal(final.reason, 'QUALIFICATION_PERSIST_FAILED');
+    if (['report-failure', 'async-save'].includes(scenario)) assert.equal(final.reason, 'QUALIFICATION_PERSIST_FAILED');
+    if (scenario === 'object-is-gaming' || scenario === 'helper-unsupported') {
+      assert.equal(final.reason, 'QUALIFICATION_SCOPE_UNSUPPORTED');
+      assert.equal(passive.status, 'blocked'); assert.equal(passive.reviewReady, false);
+    }
     if (scenario === 'tool-limit') assert.equal(run.qualification.checks.length, 0, 'All check rounds are reserved before dispatch.');
     if (['deleted-file', 'mode-change', 'hidden-change'].includes(scenario)) {
       assert.equal(run.qualification.artifacts.complete, true);
@@ -163,7 +230,10 @@ const execution = { ...admission, async start(input) {
     if (scenario.startsWith('candidate-') && !['candidate-valid-literal', 'candidate-stale-live'].includes(scenario)) assert.equal(final.reason, 'REGRESSION_UNVERIFIED');
     if (scenario === 'final-lint') assert.equal(final.reason, 'FINAL_LINT_FAILED');
     if (scenario === 'final-vitest') assert.equal(final.reason, 'FINAL_VITEST_FAILED');
-    if (['runner-worker-count', 'runner-file-parallelism'].includes(scenario)) assert.equal(final.reason, 'REGRESSION_UNVERIFIED');
+    if (['runner-worker-count', 'runner-file-parallelism', 'runner-pool-threads'].includes(scenario)) assert.equal(final.reason, 'REGRESSION_UNVERIFIED');
+    if (scenario === 'final-pool-threads' && !pinnedPool) assert.equal(final.reason, 'FINAL_VITEST_FAILED');
+    if (['stop-capture', 'stop-during-capture'].includes(scenario)) assert.equal(final.reason, 'RUN_STOPPING');
+    if (['green', 'final-pool-threads'].includes(scenario) && final.status === 'qualified') assert.equal(run.qualification.runtime.pool, 'forks');
     if (['green', 'candidate-valid-literal'].includes(scenario)) {
       assert.equal(run.qualification.runtime.maxWorkers, 1);
       assert.equal(run.qualification.runtime.fileParallelism, false);
@@ -200,6 +270,8 @@ try {
   if (scenario === 'drain-report') {
     const result = await until(() => factory.inspectRun(admitted.id), r => r.status === 'interrupted');
     assert.equal(result.outcome.reason, 'drain_failed');
+    // A failed drain settles nothing: rounds stay uncertain for reconciliation.
+    assert.ok(result.reservations.some(r => r.roundId?.startsWith('qualification:') && r.state === 'uncertain'));
     await assert.rejects(factory.startRun({ requestId: 'cannot-overlap', brief, dependencyRunId: prep.id }), { code: 'RUN_ACTIVE' });
     await assert.rejects(factory.close(), { code: 'DRAIN_FAILED' });
     await assert.rejects(openFactory({ stateDir, project }), { code: 'BACKEND_OWNED' });
@@ -209,5 +281,30 @@ try {
   const result = await until(() => factory.inspectRun(admitted.id), r => r.status === 'blocked');
   assert.equal(result.counters.modelAttempts, 1);
   assert.equal(transport.requests.length, 1);
-  process.stdout.write(`${JSON.stringify({ scenario, final, passive, counters: result.counters, run: retainedRun })}\n`);
+  // Accounting: every reservation stays counted; never-dispatched stages are
+  // settled with bounded evidence only, and settled rounds keep their receipts.
+  const rounds = result.reservations.filter(r => r.roundId?.startsWith('qualification:'));
+  assert.equal(result.counters.toolRounds, result.reservations.filter(r => r.kind === 'tool-round').length);
+  const executed = new Set(retainedRun.qualification.checks.map(c => c.stage));
+  const notDispatched = rounds.filter(r => r.state === 'settled' && JSON.parse(r.evidence).dispatched === false);
+  for (const round of notDispatched) assert.ok(!executed.has(round.roundId.slice('qualification:'.length)), round.roundId);
+  for (const round of rounds.filter(r => r.state === 'uncertain')) {
+    // Only an entered operation without a receipt may remain uncertain.
+    // candidate-stale-live: containment entered the check and rejected the tampered
+    // overlay without a receipt, which the qualifier cannot prove was never launched.
+    assert.ok(['stop', 'deadline'].includes(scenario) || (scenario === 'stop-during-capture' && round.roundId === 'qualification:capture')
+      || (scenario === 'candidate-stale-live' && round.roundId === 'qualification:candidate-base-regression'), `${scenario}: ${round.roundId}`);
+  }
+  if (['green', 'composed-modules'].includes(scenario)) {
+    assert.equal(rounds.length, 11); assert.equal(notDispatched.length, 0);
+    assert.ok(rounds.every(r => r.state === 'settled'));
+  }
+  if (scenario === 'candidate-tautology') {
+    assert.equal(rounds.length, 11); assert.ok(rounds.every(r => r.state === 'settled'));
+    assert.deepEqual(notDispatched.map(r => r.roundId), ['draft-boundary', 'draft-regression', 'draft-candidate', 'vitest', 'lint'].map(n => `qualification:${n}`));
+    assert.equal(JSON.parse(notDispatched[0].evidence).reason, 'REGRESSION_UNVERIFIED');
+  }
+  if (scenario === 'stop-capture') assert.deepEqual(rounds.map(r => [r.roundId, r.state, JSON.parse(r.evidence).dispatched]), [['qualification:capture', 'settled', false]]);
+  if (scenario === 'tool-limit') assert.ok(rounds.filter(r => r.roundId !== 'qualification:capture').every(r => r.state === 'settled' && JSON.parse(r.evidence).dispatched === false));
+  process.stdout.write(`${JSON.stringify({ scenario, final, passive, counters: result.counters, reservations: result.reservations, run: retainedRun })}\n`);
 } finally { await factory.close(); }

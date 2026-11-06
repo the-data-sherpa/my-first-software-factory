@@ -21,11 +21,17 @@ if (reported && scenario !== 'ignored-reporter') {
   // Vitest 4.0.17 resolves fileParallelism:false to maxWorkers:1, even when
   // --maxWorkers=2 was supplied. Exercise resolved config, not requested limits.
   const fileParallelism = !argv.includes('--no-file-parallelism') && config.fileParallelism !== false;
+  // CLI --pool overrides config; Vitest 4.0.17 defaults to forks. The
+  // final-pool-threads repository configuration selects threads.
+  const cliPool = argv.find(a => a.startsWith('--pool='))?.slice(7) ?? (argv.includes('--pool') ? option('--pool') : undefined);
+  const pool = scenario === 'runner-pool-threads' ? 'threads'
+    : cliPool ?? config.pool ?? (final && scenario === 'final-pool-threads' ? 'threads' : 'forks');
+  if (scenario === 'final-pool-threads' && final) console.log(JSON.stringify({ fixturePool: pool, cliPool: cliPool ?? null }));
   reporter.onInit({ version: JSON.parse(readFileSync('/work/node_modules/vitest/package.json')).version,
     config: { ...config, watch: false,
       fileParallelism: scenario === 'runner-file-parallelism' ? true : fileParallelism,
       maxWorkers: scenario === 'runner-worker-count' ? 2 : fileParallelism ? 2 : 1,
-      retry: 0, allowOnly: false, passWithNoTests: false } });
+      pool, retry: 0, allowOnly: false, passWithNoTests: false } });
   reporter.onTestRunStart([]);
 }
 const modules = []; let failed = false;
