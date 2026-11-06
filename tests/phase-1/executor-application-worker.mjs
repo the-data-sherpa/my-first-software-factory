@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import { openFactory } from '../../src/factory.mjs';
 import { createRepositoryExecution } from '../../src/execution.mjs';
 import { serveFactory } from '../../src/control-server.mjs';
@@ -37,6 +38,13 @@ if (kind === 'pagination') await writeFile(join(project.repositoryPath, 'evidenc
 fixture.git('add', '.'); fixture.git('commit', '-m', 'controlled executor application source');
 const brief = 'Goal: Trim fixture address whitespace.\nAcceptance criteria: Preserve units and add a regression test.\nEvidence: helper.mjs.';
 const scope = { writePaths: ['helper.mjs', 'helper.test.mjs'] };
+// This file is the owned instruction input. The contract under test is its
+// delivery through the real model adapter and retention through CLI inspection.
+const qualityText = kind === 'draft' ? await readFile(new URL('../../docs/agents/change-quality.md', import.meta.url), 'utf8') : undefined;
+const qualityPolicy = qualityText === undefined ? undefined : {
+  source: 'docs/agents/change-quality.md', sha256: createHash('sha256').update(qualityText).digest('hex'), text: qualityText,
+};
+let policyFailure;
 let factory = await openFactory({ stateDir, project, workspace });
 let server; let handle; let initialized = 0; let workStarted = false;
 let readOffset = 0; let received = ''; let feedbackFailure;
@@ -50,6 +58,15 @@ async function command(...args) {
 }
 const inspect = (id, options) => cli ? command('inspect', id, ...(options ? ['--event', String(options.page), '--length', String(options.length), '--offset', String(options.offset ?? 0)] : [])) : factory.inspectRun(id, options);
 async function close() { if (server) { const current = server; server = undefined; await current.close(); } else await factory.close(); }
+async function readIntent(readPage) {
+  let offset = 0; let text = '';
+  do {
+    const { executorEvidence: { page } } = await readPage(offset);
+    text += page.text;
+    offset = page.nextOffset;
+  } while (offset !== null);
+  return JSON.parse(text);
+}
 try {
   const preparation = await factory.startRun({ requestId: 'prepare', brief });
   await until(() => factory.inspectRun(preparation.id), run => run.status === 'blocked');
@@ -57,6 +74,13 @@ try {
   const prepared = await until(() => factory.inspectRun(preparation.id), run => run.dependencies?.status === 'prepared' && run.status === 'blocked');
   await close();
   const transport = controlledTransport((request, index) => {
+    if (qualityPolicy) {
+      try {
+        const delivered = request.payload.input.filter(item => item.role === 'developer').map(item => item.content);
+        assert.equal(delivered.some(text => text.includes(qualityPolicy.text)), index > 1,
+          'The full shared policy belongs in every executor request, never in the no-tool smoke.');
+      } catch (error) { policyFailure = error; throw error; }
+    }
     if (index === 1) return kind === 'refusal' ? new Response('controlled refusal', { status: 401 }) : eventsResponse();
     assert.deepEqual(request.payload.tools.map(tool => tool.name), ['read_file', 'write_file', 'run_check']);
     workStarted = true;
@@ -134,6 +158,7 @@ try {
     assert.equal(stopped.status, 'stopped');
   }
   await handle.finished;
+  if (policyFailure) throw policyFailure;
   if (feedbackFailure) throw feedbackFailure;
   const run = await until(() => inspect(admitted.id), value => !['admitted', 'running'].includes(value.status));
   assert.equal(run.status, kind === 'stop' ? 'stopped' : kind === 'refusal' ? 'blocked' : kind === 'check-output-limit' ? 'failed' : 'completed');
@@ -147,6 +172,8 @@ try {
     assert.equal(run.execution.submissionId, run.executor.submissionId);
     assert.notEqual(run.execution.submissionId, run.admission.smokeSubmissionId);
     assert.deepEqual(run.counters, { modelAttempts: 7, toolRounds: 9, reservedOutputTokens: 1024 + 6 * 8192 });
+    const intent = await readIntent(offset => inspect(run.id, { page: 0, offset, length: 4096 }));
+    assert.deepEqual(intent.qualityPolicy, qualityPolicy);
     assert.equal(await readFile(join(run.workspace.intent.worktree, 'helper.mjs'), 'utf8'), 'export const normalize = value => value.trim();\n');
     assert.match(await readFile(join(run.workspace.intent.worktree, 'helper.test.mjs'), 'utf8'), /Main # 2/);
     const page = (await inspect(run.id, { page: 0, length: 64 })).executorEvidence.page;
@@ -171,6 +198,12 @@ try {
   await close();
   const offline = await command('inspect', run.id, '--event', '0', '--length', '64');
   assert.equal(offline.status, run.status); assert.equal(offline.executorEvidence.status, run.executorEvidence.status);
+  if (qualityPolicy) {
+    const intent = await readIntent(offset => command('inspect', run.id, '--event', '0', '--offset', String(offset), '--length', '4096'));
+    assert.deepEqual(intent.qualityPolicy, qualityPolicy);
+    assert.deepEqual(offline.counters, run.counters);
+    assert.equal(offline.outcome.reviewReady, false);
+  }
   assert.equal(transport.requests.length, attempts);
   process.stdout.write(`${JSON.stringify({ run, offline, requests: attempts })}\n`);
 } finally { await close(); }
