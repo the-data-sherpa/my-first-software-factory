@@ -67,6 +67,40 @@ No completion, live owner readiness, #10 acceptance, or permission to publish fo
 
 ## Evidence and status
 
-Implementation and current-batch verification have not yet run at this initial record.
+Status on 2026-11-06: partial. Implementation and development checks continue. This section is an evidence inventory, not acceptance.
 The [source preflight](ticket-10-source-preflight.md) and [toolchain preflight](ticket-10-toolchain-preflight.md) supply the static incompatibility findings and their limits.
-Previous full and selected verification results do not verify this batch's later runtime changes.
+
+Revisions:
+
+- Helper eligibility: stream A commit `202b00bbc7b0f0b91fef37fb6b0cffc95902a3e9`. The parent cherry-picked it locally as `cd0bb9f36d54af135ff03b8455c00e88945b2f98` on `feat/vanguard-compatibility`. Both have tree `891b9c1e9b8b0801a7bf0283b913cf35397f6ffd`. No test ran on the parent commit. This is local integration, not acceptance or publication.
+- Dependency preparation: stream B frozen checkpoint `12806d9b7156f6988df119212f383130eccccde7`. It is not integrated. Later continuation work from that checkpoint is not recorded here.
+- Adversarial dependency tests: original `ce83ade4e38c09ac22c1ab20fc09462dfb183eac` and parent label correction `c796e65ce4b45e01a31debc16ed0588e84df222e`. They are not integrated and depend on the unintegrated stream B source.
+
+| Evidence | Source | Kind | Observed result and limits |
+| --- | --- | --- | --- |
+| Helper reds, greens, and selected regressions | Final stream A source, bound by file hashes to `202b00b` | Executed by stream A. Parent inspected the logs and did not rerun them. | Selected suites: helper 17/17, composed execution 9/9, integration 16/16, admission profile 1/1, admission 39/39, qualifier subset 13/13. Not a full suite, full qualification, or browser run. See [helper eligibility](helper-compatibility.md). |
+| Earlier helper regression batch | First gate design | Executed by stream A | The admission-profile stand-in failed against the new gate. The log is retained. The fixture was then corrected. That batch is stale for the final source. |
+| Controlled positive | Final stream A source | Executed, authored fixtures | Qualified controlled Work item: 10 check stages, 18 of the original tool rounds, `reviewReady: false`. |
+| Captured helper parse | Final stream A grammar | Data-only parse through `verifyHelperScope` | Supported, unchanged envelope. The helper was not evaluated, loaded as TypeScript, run under Vitest, or admitted. |
+| Helper scope drainage | All stream A journals | Parent observation | 203 unique exact scopes inactive and empty. The 92 final-batch scopes are included in the 203. Child and parent audits cover the same scopes. |
+| Absolute `bin` path correction | `12806d9` | Executed by the parent, admission only | Red 0/2, then the admission compatibility file passed 57/57, then a final 57/57 recheck. No Bun, acquisition, or contained process ran. |
+| Captured-lock admission | Stream B working tree before `3fcb8a9`, not shown byte-equal to `12806d9` | Executed by stream B, admission only, on captured data | 776 unique planned archives, 148 excluded placements, and one unmet required peer (`ajv-keywords` requires `ajv` `^8.8.2`, nearest is `6.12.6`). Stream C's independent own-policy data analysis counts 797 planned placements for the same identities. This is not archive availability, Bun, or toolchain evidence. |
+| Public-admission adversarial cases (stream F) | Verified copy of `12806d9` | Executed by stream F. Parent inspected. | 16 cases: 15 matched explicit expectations, 1 observation only, 0 mismatches. Case C16 shows that an excluded-peer mismatch can go unrecorded. It is an observation, not policy approval. |
+| Adversarial regression file (stream G) | Verified copies of `12806d9` | Executed. The parent verified the label-only run. | 11/11 with the original titles. The same 11 tests with label-only changes (test SHA-256 `94a1bada276f46dbdc484ffc88426791efef44dc5f3eb1fa0eccdd3c116e2260`) passed 11/11 on a fresh copy. On the `04ae0db` product with the same authored scaffold: 7 failed and 4 passed. The 4 passes are refusal guards, not causal checks. |
+| Streams C, D, and E | `04ae0db`, `3fcb8a9`, and captured data | Static read-only analysis and test design | Inputs for test design. Not Standards or Spec reviews and not executed Bun evidence. |
+
+Stream G corrections: `configVersion` 1 was already accepted at `04ae0db`. Case C07 shows a deduplicated planned archive, not acquisition. Case C10 duplicates a key inside a package entry, not the top-level `packages` key. Seven failed development roots from the old run were moved to a private retention directory without rewriting their stored absolute paths. This is retention, not restoration or relocation of product state.
+
+Each row reports its own observed counts. Rows that rerun the same tests are not additive, and this record gives no summed or predicted total. The historical 405/405 result and the 51/16/9/12 rechecks of #9 do not verify this batch. A later runtime change makes affected rows stale.
+
+### Open blockers and remaining gates
+
+- Generic tolerance of an unsatisfied required peer in the stream B candidate is blocked and unapproved. It is not a supported contract. If pinned Bun reproduces the captured layout, the exact choice returns to the owner.
+- Primary evidence from authored packages under pinned Bun 1.3.14 is under investigation for configuration version, layout, and peer encoding. Archive normalization, libc fields, and resource and acquisition limits are also under investigation. A possible peer-metadata mismatch for 64 planned identities is inferred from same-version npm-lock records. It was not observed in real distributions. Bun and tool network access stay denied.
+- The exclusive slot for contained fixtures moved explicitly from stream A to stream B for controlled technical continuation from `12806d9`. That continuation's latest state is not recorded here.
+- Integration of streams B and G remains. The affected execution fingerprints and evidence bindings, including any new modules, still need verification.
+- After integration: affected integration checks, then one serial current-revision full suite and the Phase 0 browser regression, then fresh, separate Opus 5.5 Standards and Spec reviews of the integrated diff from `721cdd54374f3077f6f201621c823e214a9dced4`. Findings need affected rechecks.
+
+Bun and `bun.lock` authority under Q18 is settled. Both captured Vanguard lockfiles remain inert data, not an admitted local-main commit. #9 remains accepted only as a controlled checkpoint, with SP-S1 positive owner-readiness coverage explicitly deferred.
+Further Vanguard code access, execution, or changes, real packages and acquisition, real archive metadata, credentials and `.env`, the production model, tracker writes, publication, the real #10 demonstration, and positive owner readiness remain unauthorized and unverified.
+This record claims no UI work and no milestone completion.
