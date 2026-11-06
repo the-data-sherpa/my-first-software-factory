@@ -377,6 +377,21 @@ The command and admission profile must be corrected before claiming a complete o
 Qualification composition, live provider acceptance, real Vanguard compatibility, and the #10 demonstration remain separate gates.
 See the [ticket #8 implementation record](docs/implementation/ticket-08.md) for interfaces, retained examples, and recovery limits.
 
+### Unavailable executor policy
+
+A startup policy-read failure records `blocked` with reason `EXECUTOR_POLICY_UNAVAILABLE`.
+Inspection retains this code, not the execution adapter's restore message.
+This failed executor attempt dispatches no model requests or executor tools.
+
+Starting a new run still needs owner authorization and can make paid model requests.
+
+1. Restore the factory's `docs/agents/change-quality.md` from the intended trusted revision, not from the managed project.
+2. Verify that the backend user can read the restored file.
+3. If the task is still wanted and authorized, explicitly start a new run with a new request ID.
+
+Keep the blocked run for inspection. Restoring the file does not resume it.
+Reusing its request ID returns the same retained run rather than retrying it.
+
 ## Contained execution tools
 
 The execution interface verifies the live foreground scope and actual bubblewrap launcher before exposing bounded file tools.

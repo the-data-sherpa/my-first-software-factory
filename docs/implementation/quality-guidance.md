@@ -57,6 +57,9 @@ Executor baseline evidence remains historical. Inspection does not replay execut
 
 An unreadable policy fails startup with `EXECUTOR_POLICY_UNAVAILABLE` before model or tool dispatch.
 The application retains the blocked outcome and releases safe startup ownership through its existing failure path.
+The execution adapter's error includes restore guidance, but application and CLI inspection retain only the reason code.
+The [operator instructions](../../README.md#unavailable-executor-policy) explain restoration and an explicitly authorized new run.
+No error-message field or automatic repair is added.
 
 The no-tool preflight does not receive the policy.
 No tool, model route, retry, deadline, budget, permission, qualification rule, or storage schema changes.
@@ -156,8 +159,68 @@ The subsequent full-suite command was interrupted by the owner's request for par
 Its partial journal and the focused journal contain **148** exact scopes, all audited inactive and empty after interruption.
 No matching test process or active factory containment scope remained at that check; no cleanup signals were needed.
 The retained logs are under `/tmp/factory-quality-guidance-evidence/corrections/`.
-Full post-correction verification is pending at this checkpoint.
-The earlier Opus reviews and consensus cover the findings and recommended actions, not an independent review of the corrected code.
+At correction checkpoint `c7e3891`, full post-correction verification was still pending.
+The earlier Opus reviews and consensus covered the findings and recommended actions, not the corrected code.
+
+### Parallel correction verification
+
+The owner requested five or six parallel subagents.
+Six isolated Claude Code Opus 5.5 streams examined frozen revision `c7e3891c9e9138cb65c357f81b71dc07c9c4c3af`.
+All six returned. Their temporary dependency symlinks were removed, and their checkouts remained clean.
+The two review axes remained separate. Neither static reviewer executed tests or examined the retained verification logs.
+Their ADR coverage was limited, and neither read the installed review skill body.
+
+#### Standards conclusion
+
+The static Standards review found no blocker, major, or minor findings. Two advisory nits remain deferred:
+
+- **N1, invalid UTF-8 diagnostic:** admission hashes file bytes, while the executor hashes decoded text. Invalid UTF-8 would therefore fail closed with `ADMISSION_INVALIDATED` rather than identify an encoding problem. The F1 verifier independently reported the same nit. Preserve refusal for now. A future correction should reject invalid encoding explicitly, not merely accept lossy decoding under a raw-byte digest.
+- **N2, repeated policy path:** a future rename must update the read path, profile key, and retained source name together. A shared constant is optional. The current fixed path is consistent, and a missing profile key fails closed. Independent expected values in tests should not derive from production constants solely to remove repetition.
+
+These are diagnostic and maintenance advisories, not waived safety failures.
+
+#### Spec conclusion
+
+The static Spec review found no scope creep and one minor finding, **S1: operator restore guidance**.
+The adapter's fixed error message does not survive into the application's code-only outcome.
+The parent confirmed this and added the README's code-specific restoration instructions.
+The implementation record now states explicitly which interface retains the message and which retains only the code.
+This resolves the guidance gap through documentation without adding a stored field or changing inspection output.
+The Spec review predates that documentation correction. The parent checked the final clarification against the existing behavior.
+
+#### Independent behavioral verification
+
+- **F1 binding:** both assigned regressions passed, **2/2**. Removing only the snapshot comparison made `policy-startup` fail while `policy-change` still passed. The expected negative probe confirms that profile fingerprinting alone does not close the startup gap. All four recorded scopes were inactive and empty. Edits during final drainage or handoff received static tracing, not separate timing probes.
+- **F3 startup:** the missing-policy case passed, **1/1**. A disposable unreadable-file probe also passed, **1/1**, with zero model initialization, requests, and tool counters. Both scopes were inactive and empty. Mid-run file loss and other read failures were not exercised by this stream.
+- **Application/CLI compatibility:** **16/16** passed, including the 13 intended existing cases. The parent's lookahead selection command did not exclude the three policy cases. No narrower rerun was needed to cover the intended cases. Future exclusions should use `--test-skip-pattern='policy-(change|startup|missing)'`. All 15 recorded scopes were inactive and empty.
+- **Complete suite:** `npm test` passed **277/277**, with no failures, cancellations, skips, or exclusions. The browser regression passed **1/1**. All 156 recorded scopes were inactive and empty. The browser regression created no containment scope. No test reruns or watchdog changes occurred.
+
+The compatibility reviewer also alleged that `cli-draft` lacked policy assertions. The parent declined that finding after checking the actual control flow.
+The worker strips `cli-` before selecting its `draft` assertions, so both draft modes check outgoing policy and online/offline pagination.
+No test or product change was needed. The reported selection counts and the genuine command-selection mistake remain recorded.
+
+Independent evidence directories:
+
+- F1: `/tmp/factory-f1-verify-c7e3891-2926055/`
+- F3: `/tmp/factory-f3-verify-1793955300-2924503/`
+- Application/CLI: `/tmp/factory-compat-lifecycle-c7e3891-XCYJux/`
+- Complete suite: `/tmp/factory-c7e3891-fullsuite-tTbHGb/`
+
+These are separate selections, not additive test coverage.
+The parent read their result logs, checked the disposable mutation patches, and repeated the combined exact-scope audit.
+All **325 unique recorded scopes** were inactive and empty, including the interrupted parent attempt and expected negative probes.
+The audit is `/tmp/factory-quality-guidance-evidence/corrections/combined-final-scope-audit.json`.
+The parent also verified all six review checkouts were clean and had no dependency symlink.
+Final syntax, whitespace, and all **76 inline local links and anchors across 30 Markdown files** passed.
+The guidance passed strict prose thresholds. The README passed flavored thresholds. Both checks had zero banned-term hits.
+
+### Final disposition
+
+F1–F4 and the original README clarification are corrected. The later S1 guidance clarification changes documentation only.
+The runtime, tests, shared instruction policy, packages, and runtime pin remain identical to the independently tested `c7e3891` checkpoint.
+The parent accepts this controlled shared-quality implementation with the two non-blocking advisories recorded above.
+This is not factory production acceptance, qualification acceptance, or completion of Phase 1.
+The browser result proves the existing controlled polling regression, not a production factory UI.
 
 The changes remain local on `feat/shared-quality-guidance`.
 No push, tracker mutation, factory production-model request, or real Vanguard operation occurred.
