@@ -227,3 +227,14 @@ The follow-up used stream B `981560ce968462009cd99d7731a18e3def2bfdef` runtime s
 - Six exact owned scopes across these three commands were freshly observed inactive and empty. All foreground runners exited, no owned runner remained, no dependency symlink was created, and the heavy slot was returned to the parent. No full suite ran.
 
 Prerelease registry preparation remains a technical blocker, not an established owner-policy choice. Peer tolerance and libc relaxation remain unapproved. These diagnostics establish no real-package, captured-lock installation, baseline, readiness or #10 acceptance.
+
+## Parent correction: retain failed preparation evidence
+
+The parent corrected both cleanup layers after the diagnostic checkpoint. The outer test wrapper performs assertions before declaring success and removes its root only after success and confirmed scope drainage. `compatibilityRepository` still closes its loopback server, but an explicitly supplied root belongs to its caller; the child runner no longer deletes that caller-owned repository before the parent's assertions. Default fixture-owned roots keep their existing cleanup behavior.
+
+Private receipts: `/home/cowen/.local/state/tiny-software-factory/development-evidence/retention-correction-tOgKTa/`.
+
+- A deliberate wrong assertion in the existing configuration-0 case produced exit 1 before correction. The outer root remained, but `profile/owner/package.json` was absent (`before-observation.json`).
+- With the inner-root correction, the same deliberate assertion still produced exit 1, and the inner manifest remained with a retained SHA-256 (`after-observation.json`). These are harness-retention observations, not product preparation red/green results. Both failed roots remain.
+- The original test wrapper was restored byte-for-byte after that probe. The unmutated preparation file then passed 4/4, exit 0, on the source bound by `final-source.sha256`.
+- All six exact scopes for these commands were freshly inactive and empty (`final-parent-scope-audit.json`). The worker remained restored and no new runtime source or policy was introduced. These results supersede the earlier preparation check only for the affected cleanup behavior; they are not a full suite or dependency compatibility acceptance.

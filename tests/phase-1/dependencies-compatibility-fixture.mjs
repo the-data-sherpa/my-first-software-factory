@@ -62,7 +62,8 @@ export async function compatibilityRepository(t, { manifest, lock, archives }, {
   }
   t.after(async () => {
     if (server) await new Promise((resolve) => { server.close(resolve); server.closeAllConnections(); });
-    await writable(root); await rm(root, { recursive: true, force: true });
+    // An explicit root belongs to the caller, whose scope must drain and assertions pass before removal.
+    if (!given) { await writable(root); await rm(root, { recursive: true, force: true }); }
   });
   return { root, repositoryPath, stateDir, workspaceIntent, requests, registryTransport: server && { loopbackPort: server.address().port } };
 }
