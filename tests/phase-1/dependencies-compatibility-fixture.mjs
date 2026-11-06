@@ -8,7 +8,7 @@ import { admitWorkspace, prepareWorkspace } from '../../src/workspace.mjs';
 import { admitDependencies, serializeDependencyError } from '../../src/dependencies.mjs';
 
 export { bunPath };
-// One authored placement: [lock key, version, lock metadata, optional archive manifest overrides].
+// One authored placement: [lock key, version, lock metadata, optional archive manifest overrides, optional extra archive files].
 // The archive manifest is derived from the lock metadata, as a published package would declare it.
 export function archiveManifest(name, version, metadata) {
   const pkg = { name, version, type: 'module', exports: './index.js' };
@@ -19,10 +19,10 @@ export function archiveManifest(name, version, metadata) {
 }
 export function lockFixture({ configVersion = 0, dependencies = {}, devDependencies, placements }) {
   const archives = new Map(); const packages = {};
-  for (const [key, version, metadata = {}, archive = {}] of placements) {
+  for (const [key, version, metadata = {}, archive = {}, files = {}] of placements) {
     const name = key.match(/(?:@[^/]+\/)?[^/@]+$/)[0];
     const pkg = { ...archiveManifest(name, version, metadata), ...archive };
-    const bytes = tarball({ 'package.json': JSON.stringify(pkg), 'index.js': `export const value = ${JSON.stringify(`${name}@${version}`)};` });
+    const bytes = tarball({ 'package.json': JSON.stringify(pkg), 'index.js': `export const value = ${JSON.stringify(`${name}@${version}`)};`, ...files });
     archives.set(`/${name}/-/${name.split('/').at(-1)}-${version}.tgz`, bytes);
     packages[key] = [`${name}@${version}`, '', metadata, `sha512-${createHash('sha512').update(bytes).digest('base64')}`];
   }
@@ -37,8 +37,8 @@ async function writable(path) {
   for (const entry of await readdir(path, { withFileTypes: true })) if (entry.isDirectory()) await writable(`${path}/${entry.name}`);
 }
 // Commits authored bytes into a disposable owner repository and admits a private workspace for it.
-export async function compatibilityRepository(t, { manifest, lock, archives }, { lockText, serve = false } = {}) {
-  const root = await mkdtemp('/tmp/factory-dependency-compatibility-');
+export async function compatibilityRepository(t, { manifest, lock, archives }, { lockText, serve = false, root: given } = {}) {
+  const root = given ?? await mkdtemp('/tmp/factory-dependency-compatibility-');
   const repositoryPath = `${root}/owner`; const stateDir = `${root}/private`;
   await mkdir(repositoryPath, { mode: 0o700 }); await mkdir(stateDir, { mode: 0o700 });
   await writeFile(`${repositoryPath}/package.json`, JSON.stringify(manifest));

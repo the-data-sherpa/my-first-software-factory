@@ -6,11 +6,11 @@ It does not establish real archive availability, sizes, native-package behavior,
 
 ## Status
 
-**Blocked partial checkpoint, not accepted or integrated.** Required-peer tolerance is an unapproved policy candidate. Pinned-Bun behavior and archive normalization remain unverified. Passing admission tests do not resolve those gates.
+**Blocked partial checkpoint, not accepted or integrated.** Required-peer tolerance is an unapproved policy candidate. Three owner decisions remain open: peers, `libc`, and prerelease preparation. Passing tests do not resolve those gates.
 
 - **Admission:** candidate behavior implemented and exercised through the public seam with authored fixtures and the captured lock bytes as data.
-- **Pinned Bun behavior:** not yet established. Bun fixture work waits for the exclusive heavy-test slot. See [Pending Bun fixture work](#pending-bun-fixture-work).
-- **Archive check during acquisition:** implemented and not yet exercised. It runs only after the Bun script-suppression proof, so it needs the heavy slot.
+- **Pinned Bun behavior:** controlled authored-package evidence exists. See [Controlled Bun 1.3.14 evidence](#controlled-bun-1314-evidence). Prerelease identities do not prepare.
+- **Archive check during acquisition:** exercised through real controlled acquisition. The supported metadata forms prepare; mismatches refuse before Bun installation starts.
 
 ## Profile
 
@@ -27,7 +27,7 @@ The intent records the host, the planned archives, the excluded placements, and 
 Anything outside these forms refuses with `DEPENDENCIES_UNSUPPORTED` before any request.
 
 - **Top level:** `lockfileVersion` 1, and `configVersion` 0 or 1. Only the root workspace `''` is allowed. Other existing top-level rules are unchanged.
-  Accepting configuration version 0 does not, by itself, make a lock compatible. The claim that both values select Bun's hoisted layout for a single root package is unverified until the Bun fixture runs.
+  Accepting configuration version 0 does not, by itself, make a lock compatible. Controlled frozen preparation of authored single-root graphs produced the same bundle at 0 and 1, with the lock unchanged. That evidence covers only the exercised shapes.
 - **Names:** existing npm name rules, plus `.` anywhere except the first character of a scope or name segment. Examples: `@nodelib/fs.scandir`, `array.prototype.flat`. The 150-character limit is unchanged.
 - **Versions:** strict SemVer `MAJOR.MINOR.PATCH`, with an optional prerelease such as `1.0.0-beta.2`, `2.0.0-next.5`, or `19.0.0-rc-de68d2f4-20241204`. Build metadata (`+…`), leading zeros, `v` prefixes, and unsafe integers refuse. Prereleases are ordered as SemVer specifies.
 - **Ranges** (root and locked specs): at most 256 characters, at most 16 `||` alternatives, and at most 4 comparators per alternative.
@@ -50,6 +50,7 @@ Anything outside these forms refuses with `DEPENDENCIES_UNSUPPORTED` before any 
 ## Graph rules
 
 Every relationship resolves with the existing hoisted ancestor lookup over lock keys. The resolved placement must carry the declared name.
+Lock keys check the lock's internal consistency; they are not Bun's installed layout. Controlled frozen installs re-hoisted packages differently from their keys while installing the same identities.
 
 1. **Planned.** Placements are reached from the root manifest's `dependencies` and `devDependencies` through these edges:
    - `dependencies`;
@@ -65,7 +66,7 @@ Every relationship resolves with the existing hoisted ancestor lookup over lock 
 Acquisition plans one archive per planned `name@version` identity.
 Duplicate identities must carry identical tuples, as before.
 
-## Archive check during acquisition (implemented, unverified)
+## Archive check during acquisition
 
 `registryArchive` keeps the existing checks:
 
@@ -122,22 +123,77 @@ Captured-data admission shows only that the planner accepts these bytes. It does
 - native packages without scripts;
 - real Vitest behavior or a healthy baseline.
 
-## Pending Bun fixture work
+## Controlled Bun 1.3.14 evidence
 
-The heavy-test slot is required. Use controlled packages and loopback only:
+Evidence root: `/tmp/factory-streamB-evidence-SlX0M8/heavy`, kept after the heavy-slot transfer. Each probe ran in its own owned `factory-contained-*` scope.
+Bun ran only in the existing preparation sandbox, with kernel-denied network, a frozen lockfile, and suppressed scripts. The trusted host served authored archives over loopback. No real package, registry metadata, or target code was used.
+Bun binary SHA-256 `9fd36f87…ad74`; `bunVersion` reported `1.3.14`.
 
-1. Frozen preparation under `configVersion` 0 with an unchanged lock, hoisted placements, and suppressed scripts.
-2. Prerelease archives, checking that Bun finds the planned `name@version@@@1` cache layout.
-3. Optional, peer, unmet-peer, and platform relationships. Bun must install exactly the planned set, and excluded packages must stay absent.
-4. Archive-check negatives: mismatched peer, optional, platform, or bin metadata, and an archive that carries `libc`.
-5. Confirmation that no request goes to an unplanned path.
-6. A rerun of the existing `dependencies-registry` suite. Its `platform` refusal case now uses a required `darwin` package, because host-applicable `os` metadata is supported.
+| Probe | Result |
+| --- | --- |
+| Ordinary graph, `configVersion` 0 (`h04`) | prepared, lock unchanged, no sentinels |
+| Dotted names with nested placement (`h05`) | prepared; the nested `@nodelib/fs.walk/node_modules/@nodelib/fs.scandir@2.1.5` placement was preserved |
+| Host-only optional with non-host sibling (`h07`) | prepared; `native-linux-x64` installed; `native-darwin-arm64` neither requested nor installed |
+| String and object `bin` (`h08`, `h09`) | prepared; `.bin` links match the lock |
+| Combined profile at `configVersion` 0 and 1 (`h11`, `h12`) | identical bundles; requests exactly equal the plan (10) |
+| Prerelease identity `1.0.0-beta.2` with caret or exact spec (`h06`, `h10`) | **`DEPENDENCIES_INSTALL_FAILED`** after acquiring the planned archives; lock unchanged; inspection `incomplete` |
+| Peer layout `lowpeer@6/8`, `kw` (peer `^8`), `holder`, `user`; lock keys hoisted or nested; `configVersion` 0 and 1 (`h-peer-*`) | all four prepared with the same 5 requests. Bun installed `lowpeer@8.0.0` at the root, `lowpeer@6.0.0` under `user`, and `kw` at the root, regardless of the lock keys. In the hoisted shape the planner recorded an unmet peer that the installed layout does not have |
+| Archive metadata not recorded by the lock (`h-arch-*`) | undeclared peer, optional-peer metadata on a required lock peer, dependency also published as an optional peer, different `os`, different `bin`, and `libc`: each `DEPENDENCIES_UNSUPPORTED` after exactly one request; Bun installation not launched |
+| Archive `bin` `{ name: './bin/cli.js' }` against lock `bin/cli.js` (`h-arch-bin-normalized`) | prepared |
+| Lifecycle scripts in root and host optional packages (`h-scripts`) | prepared; sentinels `[]`; suppression proof 6 positive, 0 suppressed |
+| Forged saved intent: different host, or a non-host archive with recomputed identity (`h-forged`) | `DEPENDENCIES_STALE`, 0 requests, no attempt directory; the genuine intent then prepared |
+
+These two probes were diagnostics, not product routes. Both reused the existing contained sandbox with denied network:
+
+- **`h01` lock writing:** the fixed fixture mode wrote a lock for authored `file:` tarballs.
+  - `peerDependenciesMeta.optional` becomes `optionalPeers`, and the peer range is kept.
+  - A meta-only optional peer becomes `peerDependencies: { name: "*" }` plus `optionalPeers`.
+  - `bin` is recorded exactly as published, including `./` and single-entry objects.
+  - For `file:` tarballs Bun recorded no `os`, `cpu`, or `libc`, and installed darwin- and musl-tagged packages. This path does not show registry-packument encoding or platform filtering.
+- **`h-seeded-libc`:** registry mode ran over a self-seeded cache, bypassing factory acquisition.
+  - With no `libc` in the lock, Bun installed both the musl-declared and the glibc-declared `linux/x64` optional packages.
+  - It linked `.bin` to the lock's `bin` path, not the cached manifest's.
+  - So installation takes platform and `bin` from the lock.
+
+Committed regressions from this evidence are in `tests/phase-1/dependencies-compatibility-preparation.test.mjs`:
+
+- configuration versions 0 and 1;
+- archive-metadata refusals;
+- forged intents.
+
+They encode no peer-tolerance or `libc` policy.
+
+Focused checks on the final source were run serially, each with owned scope audits:
+
+| Check | Result |
+| --- | --- |
+| `dependencies-compatibility-preparation.test.mjs` (`h20`) | 4/4 pass, exit 0; 4 scopes drained |
+| Existing `dependencies-registry.test.mjs` (`h21`) | 11/11 pass, exit 0; 11 scopes drained |
+| Existing `dependency-application.test.mjs` (`h22`) | 9/9 pass, exit 0; 12 scopes drained |
+| Admission-only `dependencies-compatibility.test.mjs` (`h23`) | 57/57 pass, exit 0; no scopes |
+
+These counts apply only to this revision. They are not additive and are not a full-suite result.
+
+Not established:
+
+- the Bun cache-folder name for prerelease identities;
+- how Bun encodes registry-packument peer or optional metadata (lock writing from a registry requires network);
+- real archives, sizes, and native behavior;
+- installation of the captured lock.
 
 ## Open decisions
 
-- **`libc`:** the captured lock has no `libc` data, so the planner includes musl variants such as `@img/sharp-linuxmusl-x64` for linux/x64. Their published archives are expected to declare `libc`, which the archive check refuses. Whether Bun 1.3.14 installs those entries determines the choice: plan them and accept a bounded `libc` field, or exclude them. This needs Bun fixture evidence and may need an owner decision.
-- **Unmet peers:** rule 2 tolerates an internally unsatisfied required-peer relationship in the captured layout. Bun tolerance is a hypothesis, not an observed fact. The independent source/data investigation in `/tmp/factory-compat-peer-investigation-RixWNH/REPORT.md` confirms that the locked root `ajv-keywords@5.1.0` resolves `ajv@6.12.6`, outside `^8.8.2`; it found no concrete authority bypass. No owner permission for generic tolerance has been granted.
-- **Archive normalization:** the same investigation found 64 planned identities whose peer/optional metadata differs between the Bun lock and same-version npm-lock records. If published archives match the npm records, the candidate archive equality checks would refuse. This is a conditional data finding, not executed acquisition or proof about real archives. Pinned-Bun authored-package probes must establish the supported encoding before corrections; do not merely ignore peers.
+- **`libc` (owner decision):** controlled evidence shows Bun installs lock entries with no `libc` field, even when the cached manifest declares musl. So the musl variants in the captured lock must be planned. Their published archives are expected to declare `libc`, which the archive check refuses during acquisition. The options are:
+  1. keep refusal, which blocks the captured lock;
+  2. accept archive `libc` only as a list of `glibc`/`musl` when the lock has no `libc`, recording that the lock's `os`/`cpu` govern installation.
+- **Prerelease preparation (blocker):** prerelease identities refuse at Bun installation. This fails closed after a bounded planned acquisition. The captured lock has two (`gensync`, `resolve`), so its preparation would fail. A fix needs Bun's actual prerelease cache naming, which these probes could not establish within the network boundary. Refusing prereleases at admission would avoid the wasted acquisition, but it is a behavior choice for the parent or owner.
+- **Unmet peers (owner decision, still unapproved):** rule 2 tolerates an internally unsatisfied required-peer relationship in the captured layout. In the authored analog, frozen Bun 1.3.14 did not install the lock-key layout. It hoisted the satisfying provider, so the recorded mismatch did not describe the installed bundle. This shows the planner's lock-key provider is not authoritative for installed layout. It does not approve tolerance, and it says nothing about the captured lock's real installation. The alternatives are:
+  1. strict refusal of any lock-key peer mismatch, which blocks the captured lock;
+  2. an exact owner-acknowledged exception bound to `{ placement, peer, range, provider@version }` and the lock hash;
+  3. recording only, with a post-install check that each recorded peer is satisfied in the actual bundle.
+
+  Bun tolerance of the captured layout is still a hypothesis. The independent source/data investigation in `/tmp/factory-compat-peer-investigation-RixWNH/REPORT.md` confirms that the locked root `ajv-keywords@5.1.0` resolves `ajv@6.12.6`, outside `^8.8.2`; it found no concrete authority bypass. No owner permission for generic tolerance has been granted.
+- **Archive normalization:** the archive check now runs with real acquisition and refuses each unrecorded-metadata form above. Bun's `file:` lock writing keeps optional peers as `optionalPeers`, but its registry-packument encoding remains unobserved. The independent investigation found 64 planned identities whose peer/optional metadata differs between the Bun lock and same-version npm-lock records. If published archives match the npm records, the candidate archive equality checks would refuse. This is a conditional data finding, not executed acquisition or proof about real archives. Pinned-Bun authored-package probes must establish the supported encoding before corrections; do not merely ignore peers.
 - **Captured-lock regression:** the 258 KB captured lock is not committed as a test fixture. Committed tests use authored equivalent shapes.
 
 ## Parent correction: absolute bin paths
@@ -156,5 +212,6 @@ These are ordinary disposable admission fixtures with synchronous native Git set
 ## Integration needs (parent)
 
 - No new runtime module. All grammar lives in `src/dependencies-lock.mjs`, which the admission profile already hashes.
-- `dependencies-registry.mjs`, `dependencies-process.mjs`, and `dependencies-worker.mjs` are unchanged. They are not in the admission profile today.
+- `dependencies-registry.mjs`, `dependencies-process.mjs`, and `dependencies-worker.mjs` are unchanged in this stage. They are not in the admission profile today.
+- New test-only files: `dependencies-compatibility-preparation.test.mjs` and `dependencies-compatibility-runner.mjs`. The compatibility fixture gained optional extra archive files and an explicit root.
 - The policy rename and the new `acquisition` fields (`host`, `excluded`, `unmetPeers`) change the intent identity and the admission profile digest for registry runs.
