@@ -1,5 +1,6 @@
 import { readFile, mkdir, realpath, lstat, writeFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { inspectWorkspace } from './workspace.mjs';
 import { acquireOwner, privateDirectory, openRecords } from './storage.mjs';
@@ -50,7 +51,8 @@ async function toolchain(bunPath, registry = false) {
   // Toolchain paths are trusted owner inputs, not repository fields. Never read user Bun config.
   if (typeof bunPath !== 'string' || await realpath(bunPath) !== bunPath) fail('DEPENDENCIES_UNSAFE');
   const paths = [bunPath, await realpath(process.execPath), await realpath('/usr/bin/bwrap'),
-    ...await Promise.all(libraries.map((library) => realpath(`/usr/lib/${library}`)))];
+    ...await Promise.all(libraries.map((library) => realpath(`/usr/lib/${library}`))),
+    ...(registry ? [fileURLToPath(new URL('./dependencies-cache.mjs', import.meta.url))] : [])];
   const files = [];
   for (const path of paths) {
     const info = await lstat(path);

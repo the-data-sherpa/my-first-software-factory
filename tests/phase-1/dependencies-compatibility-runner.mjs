@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { lockFixture, compatibilityRepository, bunPath } from './dependencies-compatibility-fixture.mjs';
 import { admitDependencies, prepareDependencies, inspectDependencies, dependencyDirectory, serializeDependencyError } from '../../src/dependencies.mjs';
 import { hash } from '../../src/dependencies-files.mjs';
+import { prereleasePackages } from './dependencies-prerelease-fixture.mjs';
 
 const [scenario, root] = process.argv.slice(2);
 const leaf = (key, version, metadata = {}, archive = {}, files = {}) => [key, version, metadata, archive, files];
@@ -20,11 +21,17 @@ async function repository(name, fixture, mutate) {
 async function prepare(f) {
   const intent = await admitDependencies({ workspaceIntent: f.workspaceIntent, bunPath, registry: true });
   const lock = await readFile(`${f.repositoryPath}/bun.lock`);
+  const manifest = await readFile(`${f.repositoryPath}/package.json`);
+  const npmLock = await readFile(`${f.repositoryPath}/package-lock.json`);
   const result = { planned: intent.acquisition.archives.map((entry) => entry.path), excluded: intent.acquisition.excluded };
   try {
     const receipt = await prepareDependencies(intent, { authorizeRegistryFetch: true, registryTransport: f.registryTransport });
     Object.assign(result, { status: receipt.status, bunVersion: receipt.bunVersion, network: receipt.network, sentinels: receipt.sentinels,
       suppression: receipt.suppression, inventory: receipt.inventory.filter((file) => file.type !== 'file').map((file) => file.target ? `${file.path} -> ${file.target}` : file.path) });
+    result.installed = await Promise.all(receipt.inventory.filter((file) => file.type === 'file' && file.path.endsWith('/package.json')).map(async (file) => {
+      const pkg = JSON.parse(await readFile(`${dependencyDirectory(intent)}/bundle/${file.path}`, 'utf8'));
+      return { path: file.path, name: pkg.name, version: pkg.version };
+    }));
   } catch (error) {
     result.code = serializeDependencyError(error).code;
     result.installLaunched = await readFile(`${dependencyDirectory(intent)}/launch.json`).then(() => true, () => false);
@@ -32,6 +39,8 @@ async function prepare(f) {
   result.inspected = (await inspectDependencies(intent)).status;
   result.requests = f.requests.map(({ method, path, authorization }) => ({ method, path, authorization: authorization ?? null }));
   result.lockUnchanged = lock.equals(await readFile(`${f.workspaceIntent.worktree}/bun.lock`));
+  result.manifestUnchanged = manifest.equals(await readFile(`${f.workspaceIntent.worktree}/package.json`));
+  result.npmLockUnchanged = npmLock.equals(await readFile(`${f.workspaceIntent.worktree}/package-lock.json`));
   return result;
 }
 
@@ -66,6 +75,15 @@ const archiveVariants = {
 try {
   if (scenario === 'profile-0' || scenario === 'profile-1') {
     console.log(JSON.stringify(await prepare(await repository('profile', profile(Number(scenario.at(-1))), withRootScripts))));
+  } else if (scenario === 'prerelease') {
+    console.log(JSON.stringify(await prepare(await repository('prerelease', lockFixture({
+      dependencies: { gensync: '^1.0.0-beta.2' }, placements: [leaf('gensync', '1.0.0-beta.2')],
+    })))));
+  } else if (scenario === 'prerelease-boundaries') {
+    console.log(JSON.stringify(await prepare(await repository('prerelease-boundaries', lockFixture({
+      dependencies: Object.fromEntries(prereleasePackages.map(pkg => [pkg.name, pkg.spec])),
+      placements: prereleasePackages.map(pkg => leaf(pkg.name, pkg.version)),
+    })))));
   } else if (scenario === 'archive-metadata') {
     const results = {};
     for (const [index, [name, [metadata, archive, files]]] of Object.entries(archiveVariants).entries()) {
@@ -80,6 +98,7 @@ try {
     await writeFile(`${root}/saved-intent.json`, JSON.stringify(intent), { mode: 0o600 });
     const forge = {
       host: (body) => { body.acquisition.host = { os: 'darwin', cpu: 'arm64' }; },
+      cacheImplementation: (body) => { body.toolchain.files.find(file => file.path.endsWith('/dependencies-cache.mjs')).sha256 = '0'.repeat(64); },
       excludedPlanned: (body) => {
         const entry = body.acquisition.archives.find((archive) => archive.name === 'native-linux-x64');
         body.acquisition.archives.push({ ...entry, name: 'native-darwin-arm64', path: '/native-darwin-arm64/-/native-darwin-arm64-0.34.5.tgz',

@@ -238,3 +238,39 @@ Private receipts: `/home/cowen/.local/state/tiny-software-factory/development-ev
 - With the inner-root correction, the same deliberate assertion still produced exit 1, and the inner manifest remained with a retained SHA-256 (`after-observation.json`). These are harness-retention observations, not product preparation red/green results. Both failed roots remain.
 - The original test wrapper was restored byte-for-byte after that probe. The unmutated preparation file then passed 4/4, exit 0, on the source bound by `final-source.sha256`.
 - All six exact scopes for these commands were freshly inactive and empty (`final-parent-scope-audit.json`). The worker remained restored and no new runtime source or policy was introduced. These results supersede the earlier preparation check only for the affected cleanup behavior; they are not a full suite or dependency compatibility acceptance.
+
+## Source-established prerelease cache correction (2026-11-06)
+
+This cache-only correction starts at stream B `24ab341b67ea0f00f51260b450f74901c3dfdf26`, after the parent corrected failure retention. It supersedes the prerelease blocker above for the controlled forms exercised here. The owner separately accepted installed-graph validation and bounded libc recognition; that implementation is outside this cache correction. This section does not accept generic peer tolerance, change libc handling, or integrate B/G.
+
+### Source and implementation
+
+The parent authorized read-only official-source research. The source research identifies Bun tag `bun-v1.3.14` as commit `0d9b296af33f2b851fcbf4df3e9ec89751734ba4`. The [pinned default-registry formatter](https://github.com/oven-sh/bun/blob/0d9b296af33f2b851fcbf4df3e9ec89751734ba4/src/install/PackageManager/PackageManagerDirectories.zig) uses `name@M.m.p-<16 lowercase hexadecimal hash digits>@@@1` for prereleases. The hash input is the prerelease suffix alone, preserving byte case and dots, with no introducing hyphen, name or version triple.
+
+New `src/dependencies-cache.mjs` ports the stateless seed-zero [pinned Wyhash11 implementation](https://github.com/oven-sh/bun/blob/0d9b296af33f2b851fcbf4df3e9ec89751734ba4/src/wyhash/wyhash.zig), including 32-byte rounds, swapped 32-bit short-tail halves, all tail lengths, unsigned 64-bit multiply/fold, and leading-zero padding. It uses Node built-ins and BigInt, with no dependency or extra Bun invocation. Bun identifies that algorithm as copied from Zig `v0.11.0-dev.2609+5e19250a1`; the module retains the full [upstream MIT notice, Copyright 2015–2023 Zig contributors](https://github.com/ziglang/zig/blob/5e19250a1/LICENSE). Bun's own pinned `LICENSE.md` identifies Bun as MIT licensed. No downloaded source was executed.
+
+Only the cache basename changes. Complete locked versions, archive request paths, metadata/integrity checks, limits, manifests and both lockfiles retain their existing meaning. Stable cache paths remain unchanged. Build metadata, custom registry and patch forms remain refused; no new support for them was added. `dependencies.mjs` now includes the cache-module bytes and mode in registry preparation's recorded toolchain file fingerprints, preserving Bun as `files[0]`. Validation rederives that fingerprint; a forged saved cache-module hash is refused as stale before requests or an attempt directory. This is executed tamper evidence, not merely a recorded hash.
+
+### Executed evidence
+
+Private evidence root: `/home/cowen/.local/state/tiny-software-factory/development-evidence/prerelease-cache-fix-5Rz2Q3/`. Each command has its exact source hashes, output and terminal exit; the preparation wrapper additionally retains the actual result, owned scope and root path. The causal red uses unchanged `24ab341` product code with the permanent regression already added.
+
+| Check | Observed result | Limits |
+| --- | --- | --- |
+| Permanent public prerelease regression before correction | 0/1, exit 1: `DEPENDENCIES_INSTALL_FAILED`, installation attempted, one exact planned request, incomplete inspection and unchanged manifest/Bun/npm-lock bytes | `red/`; failed root `/tmp/factory-dependency-compatibility-XCmyZL` and its inner repository remain retained |
+| Same regression after correction | 1/1, exit 0: prepared and passively verified authored `gensync@1.0.0-beta.2` bundle | `green/`; actual contained pinned Bun, trusted loopback, no real package |
+| Public preparation boundary graph | 1/1, exit 0, with 66 exact installed authored identities | `boundaries/`; suffix lengths 1–58 cover every tail length and a 32-byte round through the existing 64-byte version limit; exact/caret, case-distinct suffixes, dotted/scoped names, leading-zero suffix `zero44` and two stable controls |
+| Final preparation file | 6/6, exit 0 | `final-preparation/`; includes the two prerelease cases, existing config/metadata negatives and forged host/cache-module/non-host intents |
+| Registry file | 11/11, exit 0 | `registry/`; existing acquisition, integrity, refusal, cancellation and reuse boundaries |
+| Non-model application cases | 8/8, exit 0 | `application/`; explicit positive name selection excludes the existing model-bearing bundle-reuse case; no model was run |
+| Admission-only compatibility file | 57/57, exit 0 | `admission/`; no contained process or acquisition; includes build-metadata and other refusal guards |
+
+Successful prerelease preparations assert exact installed name/version/path sets, exact planned request paths and GET requests without authorization, unchanged manifest and both lockfiles, kernel-denied network, empty lifecycle sentinels and the existing six positive suppression controls. Actual Bun cache lookup is the independent oracle: no private hash unit test, mirrored hash expected value, guessed alias or seeded alternate basename supplies success. `zero44` was selected as an authored fixture input after a data-only candidate search; its real Bun preparation verifies the padded basename, rather than treating that candidate search as compatibility evidence.
+
+The affected runtime/test source hashes were checked again after the selected tests. All 31 exact scopes across the red, green, boundary and selected contained commands were freshly inactive and empty (`final-scope-audit.json`), including the failed regression. Successful roots used the corrected drained-and-passed cleanup. The failing root remains. Every foreground runner reached an actual terminal exit. The owned temporary B `node_modules` symlink was removed only after this audit; the parent dependency directory was preserved. No worker source instrumentation, background runner or pending continuation remains. Counts from reruns overlap and are not a full-suite total.
+
+### Parent integration and unverified work
+
+Add `dependencies-cache.mjs` to the common admission/execution profile implementation list when integrating the new module. The existing qualification module-name verifier accepts its filename, but the parent must verify the actual integrated evidence/profile bindings; this cache-only check did not do so. No common admission or qualification files were edited here. New test-only `dependencies-prerelease-fixture.mjs` supplies authored identities, not hash expectations.
+
+The omitted model-bearing application case, integrated full suite, browser regression, complete independent Standards/Spec reviews, installed-graph/libc contracts, real distributions and native behavior, target baseline, production model, owner readiness and #10 remain outside this result. The unchanged security/retention/resource boundaries were exercised only by the described controlled checks.

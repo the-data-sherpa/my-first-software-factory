@@ -1,6 +1,7 @@
 // Deliberately small Bun 1.3.14 registry-lock grammar, not a package-manager resolver.
 import { createHash } from 'node:crypto';
 import { archiveEntries, parseDependencyJSON } from './dependencies-files.mjs';
+import { registryCachePath } from './dependencies-cache.mjs';
 
 const fail = () => { throw Object.assign(new Error('Unsupported locked dependency graph.'), { code: 'DEPENDENCIES_UNSUPPORTED' }); };
 // npm names may contain dots, but never start with one; scope and name segments are separate placement components.
@@ -176,7 +177,7 @@ export function registryPlan(manifest, lock) {
     if (!nameRE.test(name) || name.length > 150 || !parseVersion(version) || key.match(new RegExp(namePattern, 'g')).at(-1) !== name
       || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(tuple[3])) fail();
     const entry = { name, version, integrity: tuple[3], metadata: tuple[2],
-      path: `/${name}/-/${name.split('/').at(-1)}-${version}.tgz`, cachePath: `${name}@${version}@@@1` };
+      path: `/${name}/-/${name.split('/').at(-1)}-${version}.tgz`, cachePath: registryCachePath(name, version) };
     const id = `${name}@${version}`;
     if (archives.has(id) && canonical(archives.get(id)) !== canonical(entry)) fail();
     archives.set(id, entry); packages.set(key, { entry, version: parseVersion(version), ...metadata(tuple[2]) });
