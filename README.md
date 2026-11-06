@@ -405,8 +405,8 @@ After the real executor produces a draft, the adapter retains its live opaque ha
 The qualifier requires the same retained test bytes to fail the intended assertion on the recorded base and pass on the draft, an independent behavioral oracle, and passing final suite/lint checks.
 Qualification commands pin the fork pool and validate its resolved configuration. Controlled reporter fixtures are not real-distribution acceptance.
 
-For the selected address task, qualification supports only the exact helper/test scope and a conservative helper language: `const` declarations, a final `return`, and literal-argument string-method chains.
-Assignments, global references, arbitrary function calls, control flow, operators, and templates are unsupported and block with `QUALIFICATION_SCOPE_UNSUPPORTED`, even if a broader implementation might be correct.
+For the selected address task, qualification supports only the exact helper/test scope and a conservative helper language: `const` or `let` declarations without reassignment, a final `return`, and literal-argument string-method chains. It also accepts the exact nullable parameter form `name: string | null | undefined` with a required leading `if (!name) return "";` guard. The signature and any leading guard must remain byte-identical between base and draft.
+Assignments, global references, arbitrary function calls, other control flow or operators, and templates are unsupported and block with `QUALIFICATION_SCOPE_UNSUPPORTED`, even if a broader implementation might be correct. Composed admission checks the manifest-bound base helper and exact write pair before model work; the draft-time envelope check remains required.
 The fixed examples cannot prove general correctness or exclude every overfitted implementation.
 
 After confirmed drainage, fresh evidence, and a final original-deadline check, the application can retain one stable `workItem` on the run.

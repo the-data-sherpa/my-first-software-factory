@@ -47,7 +47,7 @@ for (const [scenario, names, legacy] of cases) {
       passed = true;
     } finally {
       // Failed cases stay for diagnosis.
-      if (drained && passed) { await cleanup(root); await cleanup(stateRoot); }
+      if (drained && passed && !process.env.FACTORY_HELPER_COMPATIBILITY_EVIDENCE) { await cleanup(root); await cleanup(stateRoot); }
       else t.diagnostic(`Retained fixture: ${root}; control state: ${stateRoot}`);
     }
   });
