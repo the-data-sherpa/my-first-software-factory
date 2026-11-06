@@ -8,6 +8,8 @@ import { executionBudget, requireReview, requireRemainingBudget, requireSafeResu
 import { observeWorkspace, prepareRunWorkspace, requireWorkspaceQuiescence } from './workspace-run.mjs';
 import { observeDependencies, prepareRunDependencies, requireDependencyQuiescence } from './dependency-run.mjs';
 import { observeAdmission } from './admission.mjs';
+import { initialQualification, validateQualificationState, applyQualificationReceipt, finalizeQualifiedRun,
+  observeQualification, limitOutcome } from './work-items.mjs';
 
 export { FactoryError } from './storage.mjs';
 export const backupFactory = (options) => backupStores(options, validateExecutionStores);
@@ -73,6 +75,8 @@ function applyReceipt(record, receipt, { passive = false } = {}) {
     if (passive || uncertainTools) {
       record.status = 'interrupted';
       record.outcome = { kind: 'uncertain', reviewReady: false, reason: 'executor_reconciliation_required' };
+    } else if (record.qualification && applyQualificationReceipt(record, receipt)) {
+      // Opted-in composed runs use only the persisted, matching qualification verdict.
     } else if (['draft-produced', 'no-change'].includes(receipt.status)) {
       record.status = 'completed';
       record.outcome = { kind: receipt.status, reviewReady: false,
@@ -117,7 +121,7 @@ function inspectionOptions(options = {}) {
   }
   return { ...options };
 }
-async function observeRunEvidence(record, stateDir, dependencyRun, options = {}) {
+async function observeRunEvidence(record, stateDir, dependencyRun, options = {}, saved = record, verify = true) {
   if (!record.executor) return observeAdmission(record, dependencyRun);
   if (record.admission?.status === 'verified') record.admission.historical = true;
   try { record.executorEvidence = await inspectExecutor({ directory: join(stateDir, 'runs', record.id), run: record, ...options }); }
@@ -125,7 +129,8 @@ async function observeRunEvidence(record, stateDir, dependencyRun, options = {})
     record.executorEvidence = { status: 'unavailable', artifactStatus: 'invalid-or-incomplete', reviewReady: false,
       inspectionFailure: { code: 'EXECUTOR_ARTIFACT', message: 'Executor evidence is invalid or incomplete. Retain the private artifacts and draft for inspection; no repair or replay occurred.' } };
   }
-  return record;
+  // Qualification freshness is checked against the stored, unobserved record.
+  return observeQualification(record, saved, join(stateDir, 'runs', record.id), dependencyRun, { verify });
 }
 
 export async function inspectHistory({ stateDir = DEFAULT_STATE_DIR, runId, inspection } = {}) {
@@ -138,12 +143,13 @@ export async function inspectHistory({ stateDir = DEFAULT_STATE_DIR, runId, insp
     const runs = runId ? [records.get(runId)] : records.list();
     if (runId && !runs[0]) throw new FactoryError('RUN_NOT_FOUND', 'No run has that identity.');
     for (const record of runs) {
+      const saved = structuredClone(record);
       await observeWorkspace(record, stateDir);
       await observeDependencies(record, stateDir);
       if (ACTIVE_STATUSES.includes(record.status)) {
         applyReceipt(record, await inspectExecution(join(stateDir, 'runs', record.id), { stateRoot: stateDir }), { passive: true });
       }
-      await observeRunEvidence(record, stateDir, record.admission ? records.get(record.admission.dependencyRunId) : undefined, options);
+      await observeRunEvidence(record, stateDir, record.admission ? records.get(record.admission.dependencyRunId) : undefined, options, saved, Boolean(runId));
     }
     return runId ? runs[0] : runs;
   } finally { records?.close(); release(); }
@@ -163,6 +169,12 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
     throw new FactoryError('INVALID_PROJECT', 'Phase 1 configures only the Vanguard project.');
   }
   project = { id: project.id, repositoryPath: resolve(project.repositoryPath) };
+  // Read the opt-in once. Only a composed repository executor may qualify drafts.
+  const qualifiesDrafts = execution?.qualifiesDrafts === true;
+  if ((execution?.qualifiesDrafts !== undefined && typeof execution.qualifiesDrafts !== 'boolean')
+    || (qualifiesDrafts && execution.mode !== 'repository-executor')) {
+    throw new FactoryError('INVALID_EXECUTION', 'Draft qualification requires an explicitly composed repository-executor adapter.');
+  }
   const release = await acquireOwner(stateDir);
   let records;
   try { records = await openRecords(stateDir); }
@@ -218,6 +230,7 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
       ...(admissionEnabled ? { admission: { version: 1, kind: execution.admissionKind,
         dependencyRunId, status: 'pending', readiness: 'not-ready', reviewReady: false } } : {}),
       ...(execution?.mode === 'repository-executor' ? { executor: { version: 1, kind: execution.admissionKind, status: 'pending', scope } } : {}),
+      ...(qualifiesDrafts ? { qualification: initialQualification(id, execution.admissionKind) } : {}),
       capabilities: { repositoryTools: execution?.mode === 'repository-executor',
         productionModel: ['model-preflight', 'model-bounded-no-tools'].includes(execution?.mode)
           || (admissionEnabled && execution.admissionKind === 'owner'),
@@ -321,6 +334,12 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
           }
           current.executor = { ...structuredClone(executor), reviewReady: false };
           records.save(current);
+        } } : {}),
+        ...(record.qualification && qualifiesDrafts ? { saveQualification: (state) => {
+          if (owned.drained) throw new FactoryError('QUALIFICATION_CONFLICT', 'The run has already been finalized.');
+          const current = get(id);
+          current.qualification = validateQualificationState(state, current);
+          records.save(current); // Saved verbatim: passive inspection compares it with the private state artifact.
         } } : {}) });
       record = get(id);
       if (owned.handle.submissionId !== undefined) record.execution.submissionId = owned.handle.submissionId;
@@ -349,10 +368,19 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
         throw new FactoryError('DRAIN_FAILED', 'Owned work did not confirm drainage. Admission and backend ownership remain fenced.');
       }
       clock.clearTimeout(owned.timer);
-      const latest = get(id);
-      if (owned.stopReason) {
+      let latest = get(id);
+      if (!owned.stopReason && latest.qualification && record.status === 'completed' && record.outcome?.kind === 'qualified') {
+        // Only after confirmed drainage: revalidate retained evidence, then persist at most one Work item.
+        const finalized = await finalizeQualifiedRun({ run: latest, directory: join(stateDir, 'runs', id),
+          dependencyRun: records.get(latest.admission?.dependencyRunId), now: clock.now() });
+        latest = get(id);
+        ({ status: record.status, outcome: record.outcome } = finalized);
+        if (finalized.workItem && !owned.stopReason) latest.workItem = finalized.workItem;
+      }
+      if (owned.stopReason) { // A stop fence outranks every receipt and qualification result.
         record.status = owned.stopReason === 'RUN_DEADLINE' ? 'failed' : 'stopped';
-        record.outcome = { kind: record.status, reviewReady: false, reason: owned.stopReason };
+        record.outcome = { kind: latest.qualification ? limitOutcome(record.status, owned.stopReason) : record.status,
+          reviewReady: false, reason: owned.stopReason };
       }
       records.save({ ...latest, status: record.status, outcome: record.outcome,
         execution: record.executor ? latest.execution : record.execution });
@@ -446,6 +474,7 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
       assertControl();
       const record = get(id);
       if (record.status !== 'interrupted' || record.stopRequested) throw new FactoryError('RUN_NOT_INTERRUPTED', 'Only an interrupted run without a stop intent can be resumed.');
+      if (record.qualification) throw new FactoryError('UNSAFE_RESUME', 'A qualifying execution never resumes. Inspect its retained evidence and use an explicit linked replacement.');
       if (job?.id === id && !job.drained) throw new FactoryError('RECOVERY_REQUIRED', 'The current backend still owns undrained work.');
       requireReview(review);
       requireRemainingBudget(record, clock.now());
@@ -497,12 +526,14 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
     },
     inspectRun: async (id, inspection) => {
       const options = inspectionOptions(inspection);
-      const record = await observeDependencies(await observeWorkspace(get(id), stateDir), stateDir);
-      return observeRunEvidence(record, stateDir, record.admission ? records.get(record.admission.dependencyRunId) : undefined, options);
+      const saved = get(id);
+      const record = await observeDependencies(await observeWorkspace(structuredClone(saved), stateDir), stateDir);
+      return observeRunEvidence(record, stateDir, record.admission ? records.get(record.admission.dependencyRunId) : undefined, options, saved);
     },
     listRuns: async () => Promise.all(records.list().map(async (record) => {
+      const saved = structuredClone(record);
       await observeDependencies(await observeWorkspace(record, stateDir), stateDir);
-      return observeRunEvidence(record, stateDir, record.admission ? records.get(record.admission.dependencyRunId) : undefined);
+      return observeRunEvidence(record, stateDir, record.admission ? records.get(record.admission.dependencyRunId) : undefined, {}, saved, false);
     })),
     close() {
       if (closePromise) return closePromise;
