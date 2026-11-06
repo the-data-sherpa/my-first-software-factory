@@ -108,7 +108,7 @@ test('a package reachable only through a required peer is planned with its own r
   }));
 });
 
-test('one locked identity at two planned placements and one excluded placement is acquired once', async (t) => {
+test('one locked identity at two planned placements and one excluded placement has one planned archive', async (t) => {
   await admitted(t, lockFixture(duplicateIdentityGraph()), (f) => assertPlan(f, duplicateIdentityPlan));
 });
 
@@ -140,7 +140,7 @@ test('an escaped duplicate metadata key inside a lock tuple is refused as unsafe
   await admitted(t, fixture, (f) => assertRefused(f, UNSAFE), { lockText: text });
 });
 
-test('a duplicate packages key whose parsed value equals an admitted lock is refused as unsafe', async (t) => {
+test('a duplicate package-entry key whose parsed value equals an admitted lock is refused as unsafe', async (t) => {
   const fixture = lockFixture(sharedClosureGraph());
   const text = insertAfter(lockText(fixture.lock), '"packages": {', '"packages": {', `\n    "wasm-only": ${JSON.stringify(fixture.lock.packages['wasm-only'])},`);
   assert.deepEqual(JSON.parse(text), fixture.lock, 'precondition: parsing yields the admitted lock');
