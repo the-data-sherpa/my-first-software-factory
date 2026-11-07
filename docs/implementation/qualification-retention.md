@@ -29,11 +29,11 @@ The changed-guard case checks that a byte-different but behaviorally equivalent 
 - A fresh offline CLI `inspect` of the retained positive run verified complete current evidence, ten stages, unchanged counters and controlled `reviewReady: false` after the backend closed (`offline-positive.json`). Syntax, local link destinations and whitespace checks passed.
 - `source-before.json` and `source-after.json` bind 140 source/config/test hashes: 139 unchanged, with only the helper test wrapper changed. All runtime modules and dependency/runtime pins are unchanged.
 
-The final integrated full suite, browser and independent review remain separate verification gates. Historical adversarial coverage remains revision-bound in the [helper review](helper-followup-review.md) and [ticket #9 integration record](ticket-09-integration.md); it is not a fresh test total for this change.
+For subsequent integrated checks, review coverage and remaining gates, see [Phase 1 integrated verification](phase-1-integrated-verification.md). Historical adversarial coverage remains revision-bound in the [helper review](helper-followup-review.md) and [ticket #9 integration record](ticket-09-integration.md); it is not a fresh test total for this change.
 
 ## Real #10 qualification still required
 
-The [publication checkpoint](publication-checkpoint.md) governs the current integration state. The [controlled #9 acceptance](ticket-09-integration.md#owner-acceptance-and-next-authority) deferred positive owner readiness and its stale-evidence downgrade to #10; this fixture does not resolve that deferral.
+The [publication checkpoint](publication-checkpoint.md) records the historical integration state. The [controlled #9 acceptance](ticket-09-integration.md#owner-acceptance-and-next-authority) deferred positive owner readiness and its stale-evidence downgrade to #10; this fixture does not resolve that deferral.
 
 The proposed coordinated run must admit an exact local-main Vanguard commit, explicitly prepare/reuse its real locked Bun bundle with scripts disabled, and use `factory-contained.mjs serve --execute-agent` with the existing CLI `start --dependency-run` and exactly the selected helper/test write paths. It must use the selected capped `anthropic/claude-sonnet-5-5` route through Pi OAuth at low adaptive effort ([ADR 0006](../adr/0006-use-capped-anthropic-oauth-in-phase-1.md)), real healthy baselines, actual executor writes, the same candidate failing on base/passing on draft, independent oracle, and real final full Vitest/lint receipts within the unchanged original limits.
 
