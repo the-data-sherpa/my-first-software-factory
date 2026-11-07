@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFile, mkdtemp, rm, chmod, readdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { runForeground } from '../fixtures/containment-harness.mjs';
 import { fixture, git } from './workspace-fixture.mjs';
 import { admitWorkspace, prepareWorkspace } from '../../src/workspace.mjs';
