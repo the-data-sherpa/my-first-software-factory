@@ -20,9 +20,10 @@ const execution = createQualifiedRepositoryExecution(options);
 `options` accepts only the executor's own keys: `fixture`, `createRuntime`, `fetch`, and `clock`.
 Any other key, such as `verifyDraft` or `qualifier`, fails with `QUALIFICATION_CONFIGURATION`.
 The executor keeps its existing rule: injected runtime or transport requires explicit fixture identity.
-Construction, `resume`, and `assessRecovery` load no model and perform no work.
+Construction and `resume` load no model and dispatch no work.
 `resume` always fails with `UNSAFE_RESUME`. An interrupted composed run never resumes automatically.
-`createRepositoryExecution` remains valid for non-composed use. Composed recovery assessment follows the [lifecycle replacement contract](lifecycle-replacement.md).
+`assessRecovery` reads retained evidence and observes the host under the [lifecycle replacement contract](lifecycle-replacement.md).
+`createRepositoryExecution` remains valid for non-composed use.
 
 ## Start input
 
