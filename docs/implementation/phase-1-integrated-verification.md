@@ -6,7 +6,7 @@ This records lane A's completed repository checks on 2026-11-07 UTC. Final pipel
 
 Tested merged revision: `d95364493c8627f98b1ea67a1cb5b4fe7a2a5b93`, tree `bc2bff5535066ab13bfae3eb035c4bdec06545d7`. It includes the dependency retention, lifecycle replacement, and capped Sonnet OAuth corrections, including the later native-fetch drainage repair.
 
-Both commands used `/home/cowen/.local/share/mise/installs/node/24.21.0/bin/node` and its adjacent npm CLI, with command-local PATH selecting that Node for children. Node reported `v24.21.0`; executable SHA-256: `7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c`. No runtime distribution or global configuration changed.
+The recorded commands used `/home/cowen/.local/share/mise/installs/node/24.21.0/bin/node` and its adjacent npm CLI, with command-local PATH selecting that Node for children. Node reported `v24.21.0`; executable SHA-256: `7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c`. No runtime distribution or global configuration changed.
 
 All 199 tracked file hashes matched before and after each invocation. The 58-file runtime manifest covers `src/`, `bin/`, package files and `.mise.toml`; its SHA-256 is `8cd68fc03aae665e79a79a9606da185af2c224a8c60386b9370f6a40708f9e60`. Its exact encoding and constituent hashes are retained in `runtime-binding.json`; this is a source manifest, not a product readiness attestation.
 
