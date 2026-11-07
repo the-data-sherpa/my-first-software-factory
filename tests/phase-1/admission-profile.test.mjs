@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile, chmod, readdir } from 'node:fs/promises';
@@ -17,7 +19,7 @@ async function cleanup(root) {
 }
 
 test('composed admission profile binds the qualified execution modules or fails closed without them', async t => {
-  const root = await mkdtemp('/tmp/factory-dependencies-');
+  const root = await mkdtemp(join(tmpdir(), 'factory-dependencies-'));
   let drained = false;
   try {
     const result = await runOwnedScope(t, [worker, root, 'qualified-profile'], { timeout: 60000 });

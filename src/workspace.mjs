@@ -29,7 +29,8 @@ async function safe(operation) {
 
 // Pure source admission apart from disposable, non-executing Git read-adapter metadata.
 // Callers MUST persist the returned JSON before calling prepareWorkspace.
-export async function admitWorkspace({ stateDir, project, runId, signal } = {}) {
+// baseCommit is a trusted linked-replacement input, never a CLI source override.
+export async function admitWorkspace({ stateDir, project, runId, signal, baseCommit: admittedCommit } = {}) {
   return safe(async () => {
     cancelled(signal);
     if (!identifier(project?.id) || !identifier(runId) || typeof stateDir !== 'string') fail('WORKSPACE_INVALID');
@@ -37,7 +38,8 @@ export async function admitWorkspace({ stateDir, project, runId, signal } = {}) 
     if (!displaySafe(stateDir)) fail('WORKSPACE_INVALID');
     const source = await sourceRepository(project.repositoryPath, signal);
     if (inside(source.path, stateDir) || inside(stateDir, source.path)) fail('WORKSPACE_INVALID');
-    const baseCommit = await localMain(source);
+    if (admittedCommit !== undefined && !/^[a-f0-9]{40}$/.test(admittedCommit)) fail('WORKSPACE_INVALID');
+    const baseCommit = admittedCommit ?? await localMain(source);
     const { manifest } = await committedSource(source, baseCommit, signal);
     cancelled(signal);
     const workspace = join(stateDir, 'runs', runId, 'workspace');

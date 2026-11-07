@@ -1,3 +1,4 @@
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, chmod, readdir, rm, readFile, writeFile } from 'node:fs/promises';
@@ -15,14 +16,15 @@ async function cleanup(path) {
 for (const scenario of ['green', 'stale-projection', 'stale-containment-entry', 'missing-qualification-module', 'tautology', 'final-lint', 'no-change', 'refusal', 'stop-check', 'stop-final',
   'deadline-final', 'deadline-cancel-join', 'report-failure', 'unexpected-qualifier-close', 'crash-check', 'crash-final']) {
   test(`qualified application and CLI integration: ${scenario}`, async t => {
-    const root = await mkdtemp('/tmp/factory-dependencies-');
+    const root = await mkdtemp(join(tmpdir(), 'factory-dependencies-'));
+    const stateRoot = await mkdtemp('/tmp/factory-control-');
     let drained = false; let passed = false;
     try {
-      const result = await runOwnedScope(t, [fileURLToPath(new URL('./qualification-integration-worker.mjs', import.meta.url)), root, scenario]);
+      const result = await runOwnedScope(t, [fileURLToPath(new URL('./qualification-integration-worker.mjs', import.meta.url)), root, scenario, join(stateRoot, 'state')]);
       drained = true;
       if (process.env.FACTORY_QUALIFICATION_INTEGRATION_EVIDENCE) await writeFile(
         join(process.env.FACTORY_QUALIFICATION_INTEGRATION_EVIDENCE, `${scenario}.json`),
-        JSON.stringify({ root, code: result.code, stdout: result.stdout, stderr: result.stderr }), { mode: 0o600 });
+        JSON.stringify({ root, stateRoot, code: result.code, stdout: result.stdout, stderr: result.stderr }), { mode: 0o600 });
       if (scenario.startsWith('crash-')) {
         assert.notEqual(result.code, 0);
         const { stateDir, runId } = JSON.parse(await readFile(join(root, 'crash-input.json'), 'utf8'));
@@ -44,7 +46,7 @@ for (const scenario of ['green', 'stale-projection', 'stale-containment-entry', 
       passed = true;
     } finally {
       // Preserve failed cases for diagnosis, and optionally one complete green artifact example.
-      if (drained && passed && !(scenario === 'green' && process.env.FACTORY_QUALIFICATION_INTEGRATION_KEEP === '1')) await cleanup(root);
+      if (drained && passed && !(scenario === 'green' && process.env.FACTORY_QUALIFICATION_INTEGRATION_KEEP === '1')) { await cleanup(root); await cleanup(stateRoot); }
     }
   });
 }

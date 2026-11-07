@@ -3,11 +3,14 @@
 import childProcess from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
 import { readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { processIdentity } from './containment-process-fixtures.mjs';
 
 export function stopPreparationStartup(root, stage, envelope) {
-  if (!/^\/tmp\/factory-dependencies-[A-Za-z0-9]+$/.test(root) || !['proof', 'target'].includes(stage)) throw new Error('Disposable startup fixture required.');
+  if (!/^factory-dependencies-[A-Za-z0-9]+$/.test(basename(root)) || root !== join(tmpdir(), basename(root))
+    || !['proof', 'target'].includes(stage)) throw new Error('Disposable startup fixture required.');
   const spawn = childProcess.spawn;
   const ready = Promise.withResolvers(); let selected;
   childProcess.spawn = (command, args, options) => {

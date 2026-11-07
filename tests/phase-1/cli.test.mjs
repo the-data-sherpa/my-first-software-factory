@@ -94,6 +94,35 @@ async function cliError(stateDir, code, ...args) {
   await assert.rejects(cli(stateDir, ...args), (error) => JSON.parse(error.stderr).error.code === code);
 }
 
+test('CLI second-start rejection identifies the active run and never queues the rejected request', { timeout: 30_000 }, async (t) => {
+  const { stateDir, briefPath } = await workspace(t);
+  const running = await backend(t, stateDir, ['--fixture', '--fixture-delay-ms', '60000']);
+  const admitted = await cli(stateDir, 'start', '--request-id', 'active-first', '--brief', briefPath);
+  const before = await until(() => cli(stateDir, 'inspect', admitted.id), (run) => Boolean(run.execution.submissionId));
+  await assert.rejects(cli(stateDir, 'start', '--request-id', 'rejected-second', '--brief', briefPath), (error) => {
+    const rejected = JSON.parse(error.stderr).error;
+    assert.equal(rejected.code, 'RUN_ACTIVE');
+    assert.equal(rejected.activeRunId, admitted.id);
+    assert.ok(rejected.message.includes(`factory inspect ${admitted.id}`));
+    return true;
+  });
+  assert.deepEqual((await cli(stateDir, 'list')).map(run => run.id), [admitted.id]);
+  const stopped = await cli(stateDir, 'stop', admitted.id);
+  assert.equal(stopped.status, 'stopped');
+  assert.equal(stopped.deadlineAt, before.deadlineAt);
+  assert.deepEqual(stopped.counters, before.counters);
+  await running.stop();
+  const reopened = await backend(t, stateDir, ['--fixture']);
+  assert.deepEqual(await cli(stateDir, 'inspect', admitted.id), stopped);
+  assert.deepEqual((await cli(stateDir, 'list')).map(run => run.id), [admitted.id]);
+  const requested = await cli(stateDir, 'start', '--request-id', 'rejected-second', '--brief', briefPath);
+  assert.notEqual(requested.id, admitted.id);
+  const done = await until(() => cli(stateDir, 'inspect', requested.id), (run) => run.status === 'completed');
+  assert.equal(done.counters.modelAttempts, 1);
+  assert.equal((await cli(stateDir, 'list')).length, 2);
+  await reopened.stop();
+});
+
 test('CLI workspace admission exposes exact source, preserves a dirty checkout, and remains production-blocked', { timeout: 30_000 }, async (t) => {
   const { stateDir, briefPath } = await workspace(t);
   const repository = await repositoryFixture(t);

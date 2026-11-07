@@ -16,13 +16,13 @@ import { until } from '../phase-0/helpers.mjs';
 import { vitestBaselineCli } from '../fixtures/vitest-baseline-cli.mjs';
 import { baseHelper } from '../fixtures/qualification-project.mjs';
 
-const [root, requested = 'success'] = process.argv.slice(2);
+const [root, requested = 'success', stateDirectory] = process.argv.slice(2);
 const cli = requested.startsWith('cli-');
 const scenario = requested.replace(/^cli-/, '');
 const exec = promisify(execFile);
 const executable = fileURLToPath(new URL('../../bin/factory.mjs', import.meta.url));
 globalThis.fetch = async () => { throw new Error('Uncontrolled network forbidden'); };
-const fixture = await dependencyFixture(root, { copyToolchain: true, checkSuffix: `${vitestBaselineCli}
+const fixture = await dependencyFixture(root, { stateDir: stateDirectory, copyToolchain: true, checkSuffix: `${vitestBaselineCli}
 if (${JSON.stringify(scenario)} === 'vitest' && process.argv.includes('run')) process.exitCode = 7;
 if (${JSON.stringify(scenario)} === 'lint' && process.argv.includes('--no-cache')) process.exitCode = 8;
 if (['between-checks','stop-check','deadline-check','shutdown-check','crash'].includes(${JSON.stringify(scenario)})) await new Promise(r => setTimeout(r, 1500));

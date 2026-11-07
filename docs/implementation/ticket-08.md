@@ -65,7 +65,7 @@ The handle supplies `finished`, `cancel`, `close`, and `handoff`.
 The parent must join `close()` before releasing ownership.
 Drainage failures reject with `DRAIN_FAILED` or `MODEL_DRAIN_FAILED`, including failures before handle transfer or during error reporting.
 `resume` rejects with `UNSAFE_RESUME`.
-Recovery assessment reports neither quiescence nor resumability.
+For standalone, non-composed execution, recovery assessment reports neither quiescence nor resumability. Composed runs use the [lifecycle replacement contract](lifecycle-replacement.md).
 
 ## Admission and draft authority
 

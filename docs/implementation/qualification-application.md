@@ -105,7 +105,7 @@ The stored snapshot and complete private patch are never truncated.
 `listRuns` and `inspectHistory` without a run ID do not hash artifacts.
 They show the bounded summary with `status: 'unverified'`, and a Work item with `freshness: 'unverified'`. This is never presented as current readiness.
 Inspection never calls the live verifier, loads a model, runs Git or checks, or schedules work. Opted-in interrupted runs refuse `resumeRun` with `UNSAFE_RESUME`.
-The general linked-replacement API requires trusted quiescence evidence for interrupted work. The current composed adapter always reports that quiescence is unconfirmed, so it does not provide a successful crashed-run replacement path. Review text cannot override the external-reconciliation fence.
+For explicit retirement and linked replacement of interrupted composed runs, see the [lifecycle replacement contract](lifecycle-replacement.md).
 
 ## Verification performed
 

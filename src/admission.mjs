@@ -22,7 +22,7 @@ const isDrain = error => ['DRAIN_FAILED', 'MODEL_DRAIN_FAILED'].includes(error?.
 const qualifiedFiles = ['qualified-execution.mjs', 'qualification.mjs', 'qualification-artifacts.mjs', 'qualification-source.mjs',
   'qualification-selection.mjs', 'qualification-scope.mjs', 'qualification-reporting.mjs', 'qualification-reporter.mjs',
   'work-items.mjs', 'factory.mjs', 'execution.mjs', 'storage.mjs', 'workspace.mjs', 'workspace-git.mjs',
-  'containment-lifetime.mjs', 'containment-entry.mjs', 'containment-host-probes.mjs', 'containment-test-profile.mjs'];
+  'containment-lifetime.mjs', 'containment-entry.mjs', 'containment-host-probes.mjs', 'containment-test-profile.mjs', 'recovery-owner.mjs'];
 async function profile(run, dependencies, kind) {
   const files = {};
   for (const name of ['admission.mjs', 'run-tools.mjs', 'containment.mjs', 'containment-files.mjs',
@@ -38,6 +38,23 @@ async function profile(run, dependencies, kind) {
     checks: ['vitest run --maxWorkers=2 --no-file-parallelism', 'eslint . --no-cache'],
     dependencyIntentId: dependencies.intent.id, inventoryDigest: dependencies.receipt.inventoryDigest,
     toolchain: dependencies.intent.toolchain, implementation: files };
+}
+
+/** Explicit retirement prerequisite only: validate retained ownership/profile without
+ * requiring the quarantined draft to equal its pristine baseline or enabling work. */
+export async function verifyRecoveryAdmission(run, dependencyRun) {
+  const binding = run.admission?.binding;
+  const deps = dependencyRun?.dependencies;
+  if (!binding || !deps?.intent || deps.status !== 'prepared' || dependencyRun.id !== run.admission.dependencyRunId
+    || deps.intent.workspaceIntent.runId !== dependencyRun.id || JSON.stringify(dependencyRun.project) !== JSON.stringify(run.project)
+    || JSON.stringify(deps.intent.workspaceIntent) !== JSON.stringify(dependencyRun.workspace?.intent)
+    || binding.runId !== run.id || binding.workspaceIntentId !== run.workspace.intent.id
+    || binding.baseCommit !== run.workspace.intent.baseCommit || binding.sourceManifestId !== run.workspace.intent.sourceManifest.id
+    || JSON.stringify(await inspectWorkspace(run.workspace.intent)) !== JSON.stringify(run.workspace.receipt)) fail('RECOVERY_REQUIRED');
+  await verifyDependencyBundle(deps.intent, { workspaceIntent: run.workspace.intent });
+  const receipt = await inspectDependencies(deps.intent);
+  if (JSON.stringify(receipt) !== JSON.stringify(deps.receipt)
+    || hash(JSON.stringify(await profile(run, { intent: deps.intent, receipt }, run.admission.kind))) !== binding.profileDigest) fail('RECOVERY_REQUIRED');
 }
 
 /** Passive evidence freshness only. It cannot mint a handoff, run probes, or reconcile effects. */

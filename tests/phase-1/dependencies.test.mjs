@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFile, mkdtemp, rm, chmod, readdir } from 'node:fs/promises';
@@ -22,7 +24,7 @@ test('owner dependency admission rejects escaping local packages with an explici
 });
 
 async function diagnose(t, scenario) {
-  const root = await mkdtemp('/tmp/factory-dependencies-');
+  const root = await mkdtemp(join(tmpdir(), 'factory-dependencies-'));
   t.after(async () => {
     async function writable(path) {
       await chmod(path, 0o700);

@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { mkdtemp, rm, readFile, appendFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { tmpdir } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
 import assert from 'node:assert/strict';
 import { processIdentity, waitForCleanup } from '../../src/containment-process-fixtures.mjs';
@@ -51,7 +52,7 @@ export async function runOwnedScope(t, args, { timeout = 60000, environment = {}
   t.after(dispose);
   child = spawn('/usr/bin/systemd-run', ['--user', '--scope', '--quiet', '--collect', `--unit=${unit}`,
     '--property=MemoryMax=4294967296', '--property=MemorySwapMax=0', '--property=TasksMax=256', '--property=OOMPolicy=kill',
-    '--', process.execPath, ...args], { env: { ...env, ...environment }, stdio: ['ignore', 'pipe', 'pipe'] });
+    '--', process.execPath, ...args], { env: { ...env, TMPDIR: tmpdir(), ...environment }, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stdout.on('data', (data) => { stdout += data; }); child.stderr.on('data', (data) => { stderr += data; });
   finished = new Promise((resolve, reject) => {
     child.on('error', reject); child.on('close', (code, signal) => resolve({ code, signal, stdout, stderr, unit }));

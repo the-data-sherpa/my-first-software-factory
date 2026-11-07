@@ -45,6 +45,8 @@ Unreconciled effects remain uncertain on the replaced run and never replay throu
 The trusted execution object supplies `mode`, `model`, `start`, `resume`, and `assessRecovery`.
 Only explicit controls call `assessRecovery`.
 It must not enable a scheduler or execute pending work.
+It receives `{ directory, run, dependencyRun? }`.
+When the run has admission state, `dependencyRun` supplies its retained dependency-preparation record.
 
 `start` and `resume` receive this input:
 
@@ -68,7 +70,7 @@ The adapter returns this handle:
 - The adapter must not submit a new SDK input during resume.
 
 Ticket #3 must connect its verified containment and parent-death cleanup to this lifecycle.
-For contained execution, recovery requires an adapter-produced assessment with these fields:
+For contained execution, resume requires an adapter-produced assessment with these fields:
 
 ```js
 {
@@ -84,6 +86,9 @@ For contained execution, recovery requires an adapter-produced assessment with t
 The structure is a trusted-code contract, not an operator certification form.
 The adapter must derive those facts from enforcement and reconciliation.
 No CLI boolean supplies them.
+
+Retirement without resume uses the adapter's quiescence assessment. See the [composed lifecycle replacement contract](lifecycle-replacement.md) for that implementation.
+
 A partial-effect fixture proves refusal, not production containment.
 The tool-free fixture reports `kind: 'tool-free-fixture'` and leaves `resourceContainmentVerified` false.
 

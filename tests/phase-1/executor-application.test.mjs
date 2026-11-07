@@ -1,3 +1,4 @@
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, chmod, readdir, writeFile, readFile, cp, mkdir, symlink } from 'node:fs/promises';
@@ -23,7 +24,8 @@ async function cleanup(root) {
 }
 for (const scenario of ['draft', 'cli-draft', 'cli-refusal', 'cli-stop', 'cli-check-output-limit', 'cli-pagination', 'no-change', 'drain-report', 'policy-change', 'policy-startup', 'policy-missing']) {
   test(`repository executor application and CLI: ${scenario}`, async t => {
-    const root = await mkdtemp('/tmp/factory-dependencies-'); let drained = false;
+    const root = await mkdtemp(join(tmpdir(), 'factory-dependencies-'));
+    const stateRoot = await mkdtemp('/tmp/factory-control-'); let drained = false;
     try {
       let worker = fileURLToPath(new URL('./executor-application-worker.mjs', import.meta.url));
       if (scenario.startsWith('policy-')) {
@@ -35,19 +37,20 @@ for (const scenario of ['draft', 'cli-draft', 'cli-refusal', 'cli-stop', 'cli-ch
         await symlink(fileURLToPath(new URL('../../node_modules', import.meta.url)), join(runtime, 'node_modules'));
         worker = join(runtime, 'tests', 'phase-1', 'executor-application-worker.mjs');
       }
-      const result = await runOwnedScope(t, [worker, root, scenario]);
+      const result = await runOwnedScope(t, [worker, root, scenario, join(stateRoot, 'state')]);
       drained = true;
       assert.equal(result.code, 0, result.stderr);
       if (process.env.FACTORY_EXECUTOR_APPLICATION_EVIDENCE) await writeFile(`${process.env.FACTORY_EXECUTOR_APPLICATION_EVIDENCE}/${scenario}.json`, result.stdout, { mode: 0o600 });
-    } finally { if (drained) await cleanup(root); }
+    } finally { if (drained) { await cleanup(root); await cleanup(stateRoot); } }
   });
 }
 
 for (const scenario of ['crash', 'smoke-crash', 'completion-crash']) {
   test(`repository executor passive crash reconciliation: ${scenario}`, async t => {
-    const root = await mkdtemp('/tmp/factory-dependencies-'); let drained = false;
+    const root = await mkdtemp(join(tmpdir(), 'factory-dependencies-'));
+    const stateRoot = await mkdtemp('/tmp/factory-control-'); let drained = false;
     try {
-      const result = await runOwnedScope(t, [fileURLToPath(new URL('./executor-application-worker.mjs', import.meta.url)), root, scenario]);
+      const result = await runOwnedScope(t, [fileURLToPath(new URL('./executor-application-worker.mjs', import.meta.url)), root, scenario, join(stateRoot, 'state')]);
       drained = true;
       assert.notEqual(result.code, 0);
       const input = JSON.parse(await readFile(join(root, 'application-input.json'), 'utf8'));
@@ -85,7 +88,7 @@ for (const scenario of ['crash', 'smoke-crash', 'completion-crash']) {
       assert.deepEqual(await readFile(join(input.stateDir, 'runs', input.runId, 'execution.sqlite')), before);
       assert.equal((await inspect()).status, 'interrupted');
       if (process.env.FACTORY_EXECUTOR_APPLICATION_EVIDENCE) await writeFile(`${process.env.FACTORY_EXECUTOR_APPLICATION_EVIDENCE}/${scenario}.json`, JSON.stringify({ root, saved }), { mode: 0o600 });
-    } finally { if (drained) await cleanup(root); }
+    } finally { if (drained) { await cleanup(root); await cleanup(stateRoot); } }
   });
 }
 

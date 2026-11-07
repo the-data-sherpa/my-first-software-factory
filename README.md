@@ -417,8 +417,8 @@ The Work item's `status` retains its creation outcome; it is historical, not a c
 Controlled Work items always have `reviewReady: false`; conditional owner readiness is not Approval or permission to publish and has no live acceptance yet.
 No-change, blocked, failed, stopped, and interrupted attempts retain their actual partial evidence without a manufactured successful Work item.
 
-Inspect an interrupted composed run first. It remains fenced pending trusted external reconciliation; `resume` refuses with `UNSAFE_RESUME`.
-Retirement or linked replacement requires a trusted quiescence assessment. The current composed adapter reports quiescence unconfirmed, so the CLI cannot retire or replace a crashed composed run merely from review text. No successful replacement of such a run is established.
+Inspect an interrupted composed run before requesting `stop` or `replace`; `resume` refuses with `UNSAFE_RESUME`.
+Explicit controls can now assess local quiescence for prospectively recorded runs. Review text cannot override a failed assessment. See the [lifecycle replacement contract](docs/implementation/lifecycle-replacement.md) for prerequisites, retained evidence, and replacement source isolation.
 A qualified private artifact recorded just before a crash does not finalize the application run or create a Work item through inspection.
 Unconfirmed drainage outranks reporting failures. A reporting failure after confirmed drainage is a failed outcome, not an invented drain failure.
 See the [integration record](docs/implementation/ticket-09-integration.md), [composition](docs/implementation/qualified-execution.md), and [application contract](docs/implementation/qualification-application.md).

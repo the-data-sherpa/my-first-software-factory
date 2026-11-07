@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runOwnedScope } from '../fixtures/containment-harness.mjs';
@@ -6,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 // Agreed seams: trusted owner preparation and verified dependency mounts, with actual Bun and a loopback registry.
 async function scenario(t, name, verify) {
-  const root = await mkdtemp('/tmp/factory-dependencies-');
+  const root = await mkdtemp(join(tmpdir(), 'factory-dependencies-'));
   let drained = false; let passed = false;
   try {
     const runner = fileURLToPath(new URL('./dependencies-registry-runner.mjs', import.meta.url));

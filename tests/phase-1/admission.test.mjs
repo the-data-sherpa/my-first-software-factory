@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile, chmod, readdir } from 'node:fs/promises';
@@ -29,23 +31,25 @@ for (const scenario of ['success', 'hidden-source', 'passive-profile', 'model-dr
   'stop-initialize', 'stop-model', 'stop-check', 'shutdown-model', 'shutdown-check', 'deadline-model', 'deadline-check',
   'cli-success', 'cli-refusal', 'cli-vitest', 'cli-lint', 'cli-missing', 'cli-stop-check']) {
   test(`admission gates without agent authority: ${scenario}`, async t => {
-    const root = await mkdtemp('/tmp/factory-dependencies-');
+    const root = await mkdtemp(join(tmpdir(), 'factory-dependencies-'));
+    const stateRoot = await mkdtemp('/tmp/factory-control-');
     let drained = false;
     try {
-      const result = await runOwnedScope(t, [worker, root, scenario], { timeout: 60000 });
+      const result = await runOwnedScope(t, [worker, root, scenario, join(stateRoot, 'state')], { timeout: 60000 });
       drained = true;
       assert.equal(result.code, 0, result.stderr);
       const evidence = JSON.parse(result.stdout);
-      if (process.env.FACTORY_ADMISSION_EVIDENCE) await writeFile(`${process.env.FACTORY_ADMISSION_EVIDENCE}/${scenario}.json`, JSON.stringify({ root, ...evidence }), { mode: 0o600 });
-    } finally { if (drained) await cleanup(root); }
+      if (process.env.FACTORY_ADMISSION_EVIDENCE) await writeFile(`${process.env.FACTORY_ADMISSION_EVIDENCE}/${scenario}.json`, JSON.stringify({ root, stateRoot, ...evidence }), { mode: 0o600 });
+    } finally { if (drained) { await cleanup(root); await cleanup(stateRoot); } }
   });
 }
 
 test('CLI crash after smoke remains interrupted on passive reopen and duplicate requests, with no new runtime', async t => {
-  const root = await mkdtemp('/tmp/factory-dependencies-');
+  const root = await mkdtemp(join(tmpdir(), 'factory-dependencies-'));
+  const stateRoot = await mkdtemp('/tmp/factory-control-');
   let drained = false;
   try {
-    const crashed = await runOwnedScope(t, [worker, root, 'cli-crash']);
+    const crashed = await runOwnedScope(t, [worker, root, 'cli-crash', join(stateRoot, 'state')]);
     drained = true;
     assert.notEqual(crashed.code, 0);
     const { admitted, stateDir, project } = JSON.parse(crashed.stdout);
@@ -71,7 +75,7 @@ test('CLI crash after smoke remains interrupted on passive reopen and duplicate 
     } finally { await factory.close(); }
     assert.equal((await inspectHistory({ stateDir, runId: admitted.id })).status, 'interrupted');
     if (process.env.FACTORY_ADMISSION_EVIDENCE) await writeFile(`${process.env.FACTORY_ADMISSION_EVIDENCE}/crash.json`, JSON.stringify({ root, passive }), { mode: 0o600 });
-  } finally { if (drained) await cleanup(root); }
+  } finally { if (drained) { await cleanup(root); await cleanup(stateRoot); } }
 });
 
 test('controlled providers cannot accidentally attest to the owner admission profile', () => {

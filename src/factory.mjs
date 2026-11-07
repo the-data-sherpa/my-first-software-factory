@@ -255,7 +255,8 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
     const directory = join(stateDir, 'runs', record.id);
     try { await privateDirectory(directory, { create: false, mustBeWithin: stateDir }); }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
-    return execution.assessRecovery({ directory, run: structuredClone(record) });
+    return execution.assessRecovery({ directory, run: structuredClone(record),
+      ...(record.admission ? { dependencyRun: records.get(record.admission.dependencyRunId) } : {}) });
   }
   async function control(operation) {
     assertControl();
@@ -324,7 +325,8 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
         ...(record.executor ? { saveExecutor: (executor) => {
           const current = get(id);
           if (executor.version !== 1 || executor.kind !== current.executor.kind
-            || JSON.stringify(validateExecutorScope(executor.scope)) !== JSON.stringify(current.executor.scope)) {
+            || JSON.stringify(validateExecutorScope(executor.scope)) !== JSON.stringify(current.executor.scope)
+            || (current.executor.recoveryOwner && JSON.stringify(executor.recoveryOwner) !== JSON.stringify(current.executor.recoveryOwner))) {
             throw new FactoryError('EXECUTOR_CONFLICT', 'Saved executor identity and file permissions are immutable.');
           }
           if (executor.submissionId !== undefined) {
@@ -527,6 +529,16 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
         if (safety && !safety.quiescent) throw new FactoryError('RECOVERY_REQUIRED', 'A replacement cannot overlap surviving work. Reconcile containment first.');
         assertOpen();
         const replacement = makeRecord(requestId, structuredClone(record.brief), record.admission?.dependencyRunId, record.executor?.scope);
+        if (record.qualification && record.workspace?.intent) {
+          // A linked run gets a separate pristine worktree from the original
+          // admitted commit, even when the owner's local main has advanced.
+          const intent = await workspace.admit({ stateDir, project, runId: replacement.id, baseCommit: record.workspace.intent.baseCommit });
+          if (intent.sourceManifest.id !== record.workspace.intent.sourceManifest.id) {
+            throw new FactoryError('RECOVERY_REQUIRED', 'The replacement source does not match the original admitted manifest.');
+          }
+          replacement.workspace.intent = intent;
+        }
+        assertOpen();
         replacement.replacesRunId = id;
         replacement.replacementReview = { review, reviewedAt: clock.now(), ...(safety ? { safety } : {}) };
         record.replacedByRunId = replacement.id;

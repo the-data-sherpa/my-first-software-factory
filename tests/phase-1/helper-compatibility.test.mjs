@@ -1,3 +1,4 @@
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, chmod, readdir, rm, writeFile } from 'node:fs/promises';
@@ -31,22 +32,23 @@ const cases = [
 for (const [scenario, names, legacy] of cases) {
   const label = [scenario, names, legacy && 'then legacy executor'].filter(Boolean).join(': ');
   test(`helper compatibility through composed qualification: ${label}`, async t => {
-    const root = await mkdtemp('/tmp/factory-dependencies-');
+    const root = await mkdtemp(join(tmpdir(), 'factory-dependencies-'));
+    const stateRoot = await mkdtemp('/tmp/factory-control-');
     let drained = false; let passed = false;
     try {
       const args = [fileURLToPath(new URL('./helper-compatibility-worker.mjs', import.meta.url)), root, scenario,
-        ...(names ? [names] : []), ...(legacy ? [legacy] : [])];
+        names ?? '', legacy ?? '', join(stateRoot, 'state')];
       const result = await runOwnedScope(t, args);
       drained = true;
       if (process.env.FACTORY_HELPER_COMPATIBILITY_EVIDENCE) await writeFile(
         join(process.env.FACTORY_HELPER_COMPATIBILITY_EVIDENCE, `${label.replace(/[^a-z0-9-]+/g, '_')}.json`),
-        JSON.stringify({ root, code: result.code, stdout: result.stdout, stderr: result.stderr }), { mode: 0o600 });
-      assert.equal(result.code, 0, `${result.stderr}\nRetained fixture: ${root}`);
+        JSON.stringify({ root, stateRoot, code: result.code, stdout: result.stdout, stderr: result.stderr }), { mode: 0o600 });
+      assert.equal(result.code, 0, `${result.stderr}\nRetained fixture: ${root}; control state: ${stateRoot}`);
       passed = true;
     } finally {
       // Failed cases stay for diagnosis.
-      if (drained && passed) await cleanup(root);
-      else t.diagnostic(`Retained fixture: ${root}`);
+      if (drained && passed) { await cleanup(root); await cleanup(stateRoot); }
+      else t.diagnostic(`Retained fixture: ${root}; control state: ${stateRoot}`);
     }
   });
 }

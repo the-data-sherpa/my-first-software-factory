@@ -1,3 +1,4 @@
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, chmod, readdir, rm, writeFile, readFile } from 'node:fs/promises';
@@ -34,7 +35,7 @@ for (const scenario of ['draft', 'no-change', 'fabricated', 'write-denied', 'sch
   'stop-draining-tooluse', 'stop-finalization', 'deadline-model', 'deadline-tool', 'model-drain', 'model-drain-report',
   'tool-budget', 'model-budget', 'transient-retry', 'pristine-transition', 'scope-expansion', 'tool-startup-drain', 'tool-drain-report']) {
   test(`controlled repository executor: ${scenario}`, async t => {
-    const root = await mkdtemp('/tmp/factory-dependencies-'); let drained = false;
+    const root = await mkdtemp(join(tmpdir(), 'factory-dependencies-')); let drained = false;
     try {
       const worker = ['tool-startup-drain', 'tool-drain-report'].includes(scenario) ? './executor-drain-worker.mjs' : './executor-worker.mjs';
       const result = await runOwnedScope(t, [fileURLToPath(new URL(worker, import.meta.url)), root, scenario]);
@@ -46,7 +47,7 @@ for (const scenario of ['draft', 'no-change', 'fabricated', 'write-denied', 'sch
 }
 
 test('crash after a real mutation retains uncertainty; passive inspect, duplicate and reopen never replay', async t => {
-  const root = await mkdtemp('/tmp/factory-dependencies-'); let drained = false;
+  const root = await mkdtemp(join(tmpdir(), 'factory-dependencies-')); let drained = false;
   try {
     const result = await runOwnedScope(t, [fileURLToPath(new URL('./executor-worker.mjs', import.meta.url)), root, 'crash']);
     drained = true;

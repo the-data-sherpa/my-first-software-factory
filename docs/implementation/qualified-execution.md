@@ -20,9 +20,10 @@ const execution = createQualifiedRepositoryExecution(options);
 `options` accepts only the executor's own keys: `fixture`, `createRuntime`, `fetch`, and `clock`.
 Any other key, such as `verifyDraft` or `qualifier`, fails with `QUALIFICATION_CONFIGURATION`.
 The executor keeps its existing rule: injected runtime or transport requires explicit fixture identity.
-Construction, `resume`, and `assessRecovery` load no model and perform no work.
+Construction and `resume` load no model and dispatch no work.
 `resume` always fails with `UNSAFE_RESUME`. An interrupted composed run never resumes automatically.
-`createRepositoryExecution` is unchanged and remains valid for non-composed use.
+`assessRecovery` reads retained evidence and observes the host under the [lifecycle replacement contract](lifecycle-replacement.md).
+`createRepositoryExecution` remains valid for non-composed use.
 
 ## Start input
 
@@ -86,7 +87,7 @@ The executor owner stays live until the qualifier has drained. The qualifier's f
 
 ## Verification
 
-Tests use the existing exact-owned harness, disposable `/tmp/factory-dependencies-*` repositories, installed Bun, controlled synthetic Vitest and ESLint packages, dummy in-memory credentials, and a controlled Responses transport.
+Tests use the existing exact-owned harness, disposable repositories, installed Bun, controlled synthetic Vitest and ESLint packages, dummy in-memory credentials, and a controlled Responses transport. Host fixture placement follows the [lifecycle fixture notes](lifecycle-replacement.md#controlled-proof-2026-11-06).
 The transport only proposes tool calls. The real executor tools write `convex/syncHelpers.ts` and the new `lib/__tests__/normalize-address.test.ts`.
 The worker now requires the real application's pending qualification and forwards every synchronous save to it. A narrow wrapper injects stop requests and one reporting fault; it does not replace the executor, qualifier, budget, or containment.
 

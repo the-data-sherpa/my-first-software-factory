@@ -65,7 +65,8 @@ export async function inspectExecutor({ directory, run, page = 0, offset = 0, le
           || event.kind !== run.executor.kind || JSON.stringify(event.scope) !== JSON.stringify(scope)
           || JSON.stringify(event.brief) !== JSON.stringify(run.brief)
           || JSON.stringify(event.source) !== JSON.stringify(run.workspace.intent.sourceManifest)
-          || JSON.stringify(event.limits) !== JSON.stringify(run.limits) || event.deadlineAt !== run.deadlineAt)) fail();
+          || JSON.stringify(event.limits) !== JSON.stringify(run.limits) || event.deadlineAt !== run.deadlineAt
+          || event.recoveryOwnerId !== run.executor.recoveryOwner?.id)) fail();
         events.push({ index, artifact, bytes: stat.size, type: event.type });
         if (event.type.startsWith('tool-')) operations.push({ type: event.type, callId: event.callId, tool: event.tool, artifact,
           ...(event.uncertain ? { uncertain: true } : {}) });

@@ -20,6 +20,7 @@ const intent = await admitWorkspace({
   project: { id, repositoryPath },  // Trusted application configuration, never model input.
   runId,                           // Stable application run identity.
   signal,                          // Optional trusted AbortSignal.
+  baseCommit,                      // Optional trusted replacement input; see Admission intent.
 });
 
 // Persist intent unchanged in the factory run record BEFORE this call.
@@ -44,13 +45,16 @@ Do not invoke preparation concurrently or allow tools during preparation.
 
 ### Admission intent
 
-`admitWorkspace` resolves the exact local `refs/heads/main` object without consulting remote refs.
+By default, `admitWorkspace` resolves the exact local `refs/heads/main` object without consulting remote refs.
 It reads committed objects, not checkout files or the index.
+A trusted caller can pass `baseCommit` to select a recorded 40-character lowercase SHA-1 commit instead.
+This input is not a CLI source override. See the [lifecycle replacement contract](lifecycle-replacement.md) for its application use.
 It returns JSON with these fields:
 
 - `version`, `id`: format version and SHA-256 identity of the returned intent body.
 - `projectId`, `runId`, `repositoryPath`, `stateDir`: ownership and canonical paths.
-- `baseRef`, `baseCommit`: the selected local ref and exact SHA-1 commit.
+- `baseRef`: `refs/heads/main`, the source-selection label even when a caller supplies `baseCommit`.
+- `baseCommit`: the exact selected SHA-1 commit.
 - `branch`, `worktree`, `gitCommonDirectory`: predetermined private destinations.
 - `sourceManifest`: the committed-source receipt described below.
 
