@@ -27,10 +27,10 @@ test('recovery ownership accepts unrelated failed units while retaining manager 
   let observation;
   const reset = () => { observation = { systemState: 'degraded', active: 'active', sub: 'running', managerLive: true,
     managerStart: '123', managerInvocation: invocationId, ownerLive: false, scopeState: 'inactive',
-    scopeInvocation: scopeInvocationId, populated: 0, members: '', hostReads: 0 }; };
+    scopeInvocation: scopeInvocationId, populated: 0, members: '', hostReads: 0, bootId, namespaces: { ...namespaces } }; };
   const stat = (pid, start) => `${pid} (fixture) ${['S', '1', ...Array(17).fill('0'), start].join(' ')}`;
   t.mock.method(fs, 'readFile', async path => {
-    if (path === '/proc/sys/kernel/random/boot_id') return `${bootId}\n`;
+    if (path === '/proc/sys/kernel/random/boot_id') return `${observation.hostReads === 1 && observation.laterBootId ? observation.laterBootId : observation.bootId}\n`;
     if (path === '/proc/self/cgroup') return `0::${cgroup}\n`;
     if (path === `/proc/${managerPid}/stat` && observation.managerLive) return stat(managerPid, observation.managerStart);
     if (path === `/proc/${process.pid}/stat` && observation.ownerLive) return stat(process.pid, '456');
@@ -45,7 +45,7 @@ test('recovery ownership accepts unrelated failed units while retaining manager 
     const name = path.slice('/proc/self/ns/'.length);
     assert.equal(path, `/proc/self/ns/${name}`);
     assert.ok(namespaces[name]);
-    return namespaces[name];
+    return (observation.hostReads === 1 && observation.laterNamespaces ? observation.laterNamespaces : observation.namespaces)[name];
   });
   const execFile = childProcess.execFile;
   childProcess.execFile = (command, args, options, callback) => {
@@ -89,10 +89,21 @@ test('recovery ownership accepts unrelated failed units while retaining manager 
     { active: 'inactive' }, { sub: 'dead' }, { managerLive: false }, { managerStart: '999' }, { managerInvocation: 'd'.repeat(32) },
     { ownerLive: true }, { scopeState: 'active' }, { scopeInvocation: 'e'.repeat(32) }, { populated: 1 }, { members: '999\n' },
     { laterState: 'stopping' },
+    { bootId: '33333333-3333-4333-8333-333333333333' }, { laterBootId: '33333333-3333-4333-8333-333333333333' },
+    ...Object.keys(namespaces).flatMap(name => [
+      { namespaces: { ...namespaces, [name]: `${name}:[5678]` } },
+      { laterNamespaces: { ...namespaces, [name]: `${name}:[5678]` } },
+    ]),
   ]) {
     await t.test(`replacement observation refuses ${JSON.stringify(patch)}`, async () => {
       reset(); Object.assign(observation, patch);
       await assert.rejects(verifyRecoveryOwner({ run, directory }), { code: 'RECOVERY_REQUIRED' });
     });
+    if (patch.laterBootId || patch.laterNamespaces) {
+      await t.test(`prospective capture refuses ${JSON.stringify(patch)}`, { skip: process.versions.node !== '24.21.0' && 'Requires Node 24.21.0 containment runtime' }, async () => {
+        reset(); Object.assign(observation, patch, { ownerLive: true, scopeState: 'active' });
+        await assert.rejects(captureRecoveryOwner({ run, directory }), { code: 'RECOVERY_REQUIRED' });
+      });
+    }
   }
 });

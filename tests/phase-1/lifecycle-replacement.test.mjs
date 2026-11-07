@@ -104,7 +104,8 @@ test('CLI linked replacement requires whole original scope extinction and quaran
         altered.executor.recoveryOwner.id = createHash('sha256').update(JSON.stringify(binding)).digest('hex');
       }
     }
-    assert.equal((await execution.assessRecovery({ run: altered, directory: join(input.stateDir, 'runs', input.runId), dependencyRun })).quiescent, false);
+    assert.equal((await execution.assessRecovery({ run: altered, directory: join(input.stateDir, 'runs', input.runId), dependencyRun })).quiescent, false,
+      'Missing or altered ownership records must be refused by the retained journal binding.');
   }
   const oldDraft = await readFile(join(before.workspace.intent.worktree, 'convex/syncHelpers.ts'), 'utf8');
   assert.ok(before.reservations.some(reservation => reservation.state === 'uncertain'));

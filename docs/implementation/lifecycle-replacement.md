@@ -6,7 +6,7 @@ Before model/tool work, a composed executor records its run/source identity, for
 
 Only an explicit control operation assesses retirement. It requires the original backend to be extinct and its exact original unit terminal, with an absent or empty descendant cgroup tree under the same manager. It also validates the retained workspace, dependency bundle, execution profile, and permitted draft scope. Missing legacy evidence, mismatched identities, changed topology/profile, surviving processes, or unexpected effects refuse with `RECOVERY_REQUIRED`. Inspection never runs this assessment or starts work. Resume remains `UNSAFE_RESUME`.
 
-At capture and retirement, `user@UID.service` must be active/running with a live manager process. The manager's invocation ID, PID and process start time must remain unchanged. Both `SystemState=running` and `SystemState=degraded` are accepted; unrelated failed user units do not establish manager loss. Other manager states refuse. The controlled observations in `tests/phase-1/recovery-owner.test.mjs` cover these checks without inducing an actual manager outage.
+At capture and retirement, `user@UID.service` must be active/running with a live manager process. The manager's invocation ID, PID and process start time must remain unchanged. Both `SystemState=running` and `SystemState=degraded` are accepted; unrelated failed user units do not establish manager loss. Other manager states refuse. The controlled observations in `tests/phase-1/recovery-owner.test.mjs` independently cover manager identity, boot-ID changes and changes to each recorded namespace, including changes between observations. They do not induce an actual reboot, namespace change or manager outage.
 
 The explicit replacement receives a new identity and isolated pristine worktree from the original admitted commit, even if local `main` has advanced. The old worktree, partial artifacts, uncertain model/tool reservations, counters and original deadline remain historical evidence. An unknown remote attempt is not declared cancelled or refunded. This guarantee relies on the accepted contained tools having no effects beyond the quarantined worktree and bounded scratch; it does not reconcile arbitrary external effects.
 
@@ -16,7 +16,7 @@ One public CLI integration case kills the real composed fixture backend after a 
 
 - Passive inspection and refused resume, with no recovery model request.
 - `RECOVERY_REQUIRED` while the original descendant survives.
-- Five missing/altered ownership-record refusals through the public execution seam, including run, boot, scope invocation and manager identity mismatches.
+- Five missing/altered ownership-record refusals at the immutable journal binding through the public execution seam. These do not independently exercise the individual boot, scope or manager comparisons.
 - Successful explicit linked admission after positive whole-scope drainage, preserving the original partial draft, **3 model attempts**, **6 tool rounds**, **17,408 reserved output tokens**, reservations and deadline.
 - A distinct worktree pinned to the original admitted commit after an independently advanced fixture `main`, and idempotent replacement requests.
 
