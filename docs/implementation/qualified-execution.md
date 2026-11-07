@@ -87,7 +87,7 @@ The executor owner stays live until the qualifier has drained. The qualifier's f
 
 ## Verification
 
-Tests use the existing exact-owned harness, disposable repositories, installed Bun, controlled synthetic Vitest and ESLint packages, dummy in-memory credentials, and a controlled Responses transport. Host fixture placement follows the [lifecycle fixture notes](lifecycle-replacement.md#controlled-proof-2026-11-06).
+Tests use the existing exact-owned harness, disposable repositories, installed Bun, controlled synthetic Vitest and ESLint packages, dummy in-memory credentials, and a controlled model transport. Host fixture placement follows the [lifecycle fixture notes](lifecycle-replacement.md#controlled-proof-2026-11-06). The [OAuth compatibility record](oauth-compatibility.md) describes the later transport changes; the verification totals below are historical.
 The transport only proposes tool calls. The real executor tools write `convex/syncHelpers.ts` and the new `lib/__tests__/normalize-address.test.ts`.
 The worker now requires the real application's pending qualification and forwards every synchronous save to it. A narrow wrapper injects stop requests and one reporting fault; it does not replace the executor, qualifier, budget, or containment.
 

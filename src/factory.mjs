@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { privateDirectory, acquireOwner, openRecords, STORAGE_VERSIONS, ACTIVE_STATUSES, FactoryError,
   backupFactory as backupStores, restoreFactory as restoreStores } from './storage.mjs';
 import { inspectExecution, validateExecutionStores, inspectExecutor, validateExecutorScope } from './execution.mjs';
+import { MODEL_ROUTE } from './model.mjs';
 import { executionBudget, requireReview, requireRemainingBudget, requireSafeResume } from './recovery.mjs';
 import { observeWorkspace, prepareRunWorkspace, requireWorkspaceQuiescence } from './workspace-run.mjs';
 import { observeDependencies, prepareRunDependencies, requireDependencyQuiescence } from './dependency-run.mjs';
@@ -227,7 +228,7 @@ export async function openFactory({ stateDir = DEFAULT_STATE_DIR, project = { id
       deadlineAt: admittedAt + PHASE_1_LIMITS.runDeadlineMs, limits: { ...PHASE_1_LIMITS },
       counters: { modelAttempts: 0, toolRounds: 0, reservedOutputTokens: 0 }, reservations: [],
       storageVersions: { ...STORAGE_VERSIONS },
-      execution: { mode: execution?.mode ?? 'production-blocked', model: execution?.model ?? 'openai/gpt-6.1-sol', requestId: `factory:${id}:input:1` },
+      execution: { mode: execution?.mode ?? 'production-blocked', model: execution?.model ?? MODEL_ROUTE, requestId: `factory:${id}:input:1` },
       ...(workspace ? { workspace: { status: 'pending' } } : {}),
       ...(admissionEnabled ? { admission: { version: 1, kind: execution.admissionKind,
         dependencyRunId, status: 'pending', readiness: 'not-ready', reviewReady: false } } : {}),

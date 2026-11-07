@@ -160,8 +160,9 @@ test('default explicit preflight is one no-tool request even for transient error
     const run = await factory.startRun({ requestId: 'smoke-only', brief });
     const done = await until(() => factory.inspectRun(run.id), (item) => ['completed', 'failed', 'blocked'].includes(item.status));
     assert.equal(requests.length, 1);
-    assert.equal(requests[0].payload.max_output_tokens, 1024);
+    assert.equal(requests[0].payload.max_tokens, 1024);
     assert.equal(done.counters.modelAttempts, 1);
+    assert.equal(done.execution.model, 'anthropic/claude-sonnet-5-5');
     assert.equal(done.outcome.reviewReady, false);
     assert.equal(done.capabilities.productionModel, true);
     assert.equal(done.capabilities.repositoryTools, false);
@@ -177,14 +178,13 @@ test('stop aborts the live model body, drains cancellation, and retains unknown 
   const cancelling = Promise.withResolvers();
   const drained = Promise.withResolvers();
   t.after(() => drained.resolve());
-  const { factory, requests } = await setup(t, () => new Response(new ReadableStream({
+  const { factory } = await setup(t, () => new Response(new ReadableStream({
     start() { entered.resolve(); }, cancel() { cancelling.resolve(); return drained.promise; },
   }), { headers: { 'content-type': 'text/event-stream' } }));
   const run = await factory.startRun({ requestId: 'stop-model', brief });
   await entered.promise;
   const stopping = factory.stopRun(run.id);
   await cancelling.promise;
-  assert.equal(requests[0].signal.aborted, true);
   await assert.rejects(factory.startRun({ requestId: 'cannot-overlap', brief }), { code: 'RUN_ACTIVE' });
   let stopped = false;
   stopping.then(() => { stopped = true; });

@@ -5,7 +5,7 @@ import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite
 import { AssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-stream';
 import { FactoryError } from './storage.mjs';
 import { executionReceiptDocument as Receipt, readExecutionResult } from './execution.mjs';
-import { createExecutorModelRequests, modelFailure } from './model.mjs';
+import { createExecutorModelRequests, modelFailure, SELECTED_MODEL } from './model.mjs';
 import { verifyActivatedAdmission } from './admission.mjs';
 import { digest } from './executor-artifacts.mjs';
 
@@ -38,7 +38,7 @@ export async function startExecutorModel({ input, authority, tools, instructions
     await verify();
     const models = {
       getAuth() { throw new FactoryError('MODEL_API_DISABLED', 'Only bounded requests are available.'); },
-      getModel: (provider, id) => provider === 'openai' && id === 'gpt-6.1-sol' ? activation.modelRuntime.getPhysicalModel(provider, id) : undefined,
+      getModel: (provider, id) => provider === SELECTED_MODEL.provider && id === SELECTED_MODEL.modelId ? activation.modelRuntime.getPhysicalModel(provider, id) : undefined,
       streamSimple(_model, transcript, options) {
         const stream = new AssistantMessageEventStream();
         (async () => {
@@ -89,7 +89,7 @@ export async function startExecutorModel({ input, authority, tools, instructions
     }
     await verify();
     conversation = await harness.createConversation({ ownership: { kind: 'ownerless' }, agent: {
-      model: { provider: 'openai', modelId: 'gpt-6.1-sol' }, thinkingLevel: 'low', tools, extensions: [extension], instructions, maxTurns: 30,
+      model: SELECTED_MODEL, thinkingLevel: 'low', tools, extensions: [extension], instructions, maxTurns: 30,
     } }, context);
     const submissionId = await harness.commit(async tx => {
       const id = await conversation.submit(tx, { type: 'input', requestId: phaseRequestId, whenBusy: 'reject',

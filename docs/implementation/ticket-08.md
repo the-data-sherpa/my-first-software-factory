@@ -133,9 +133,7 @@ Model arguments cannot supply roots, environment, URLs, commands, modules, argv,
 The adapter passes the original budget, abort signal, and verified opaque dependency handle to `createRunTools`.
 Checks remain sequential and contained.
 
-The pinned SDK normally uses incremental tool declarations for this model.
-The bounded executor model copy disables incremental additions and tool search.
-The final Responses payload must contain exactly the registered function schemas.
+The current provider payload constraints, including exact offered tool schemas, are described in the [OAuth implementation](oauth-compatibility.md#implementation).
 The real SDK request includes system guidance and the immutable brief, criteria, evidence, source identity, scope, limits, and deadline.
 Controlled transport assertions verify those outgoing fields and subsequent function-call/results, not a faux provider transcript.
 
@@ -144,7 +142,7 @@ The numerical limits remain unchanged:
 - Original 20-minute run deadline, 40 model attempts, and 30 tool rounds, including smoke and verification.
 - Normal model requests: 180-second full-stream deadline and at most 8,192 output tokens, including reasoning.
 - Smoke: one attempt, 60 seconds, and at most 1,024 output tokens.
-- Exact `openai/gpt-6.1-sol`, API-key-compatible `max_output_tokens`, explicit low reasoning, and zero provider retries.
+- Zero provider retries; see [Selected-model preflight](../../README.md#selected-model-preflight) for the current route, effort, and authentication requirements.
 - At most one durable transient retry per generation, charged to the original budget.
 - No compaction, automatic continuation, queued follow-ups, background responses, or alternate model route.
 - Checks: 120 seconds, one at a time, at most two Vitest workers, and 1 MiB output.

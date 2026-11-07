@@ -4,9 +4,9 @@ import { executionBudget } from '../../src/recovery.mjs';
 
 // No registration/refresh: those APIs can perform ambient availability checks.
 // The selected builtin uses only this in-memory credential, never host auth/config.
-export async function controlledRuntime(credential = { type: 'api_key', key: 'sk-controlled-not-a-secret' }, extra = {}) {
+export async function controlledRuntime(credential = { type: 'oauth', access: 'sk-ant-oat-controlled-not-a-secret', refresh: 'controlled-unused', expires: Date.now() + 3_600_000 }, extra = {}) {
   const credentials = new InMemoryCredentialStore();
-  await credentials.modify('openai', async () => credential);
+  await credentials.modify('anthropic', async () => credential);
   // Defense in depth for failing tests: OAuth resolution must never refresh over the network.
   if (credential.type === 'oauth') credentials.modify = async () => { throw new Error('Controlled fixture forbids credential refresh.'); };
   return ModelRuntime.create({ credentials, modelsStore: new InMemoryModelsStore(), modelsPath: null,
@@ -22,17 +22,21 @@ export function retainedBudget({ now = Date.now, signal = new AbortController().
 }
 
 export function eventsResponse({ status = 'completed', usage = { input_tokens: 20, output_tokens: 10,
-  output_tokens_details: { reasoning_tokens: 4 }, total_tokens: 30 }, error, text = 'Controlled answer.' } = {}) {
-  const item = { id: 'msg_controlled', type: 'message', role: 'assistant', status: 'completed',
-    content: [{ type: 'output_text', text, annotations: [] }] };
+  output_tokens_details: { reasoning_tokens: 4 }, total_tokens: 30 }, deltaUsage, error, text = 'Controlled answer.' } = {}) {
+  const measured = usage ? { input_tokens: usage.input_tokens, output_tokens: usage.output_tokens,
+    cache_read_input_tokens: usage.cache_read_input_tokens ?? 0, cache_creation_input_tokens: usage.cache_creation_input_tokens ?? 0,
+    ...(usage.cache_creation === undefined ? {} : { cache_creation: usage.cache_creation }),
+    output_tokens_details: { thinking_tokens: usage.output_tokens_details?.reasoning_tokens ?? 0 } } : undefined;
   const events = [
-    { type: 'response.created', response: { id: 'resp_controlled', status: 'in_progress' } },
-    { type: 'response.output_item.added', output_index: 0, item: { ...item, content: [] } },
-    { type: 'response.content_part.added', output_index: 0, content_index: 0, part: { type: 'output_text', text: '', annotations: [] } },
-    { type: 'response.output_text.delta', output_index: 0, content_index: 0, delta: text },
-    { type: 'response.output_item.done', output_index: 0, item },
-    { type: `response.${status}`, response: { id: 'resp_controlled', status, output: [item], ...(usage ? { usage } : {}),
-      ...(error ? { error } : {}), ...(status === 'incomplete' ? { incomplete_details: { reason: 'max_output_tokens' } } : {}) } },
+    { type: 'message_start', message: { id: 'msg_controlled', type: 'message', role: 'assistant', content: [],
+      usage: measured ?? {} } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } },
+    { type: 'content_block_stop', index: 0 },
+    { type: 'message_delta', delta: { stop_reason: status === 'incomplete' ? 'max_tokens' : status === 'failed' ? 'refusal' : 'end_turn' },
+      ...(deltaUsage === undefined ? (measured ? { usage: measured } : {}) : { usage: deltaUsage }) },
+    ...(status === 'failed' ? [{ type: 'error', error: { type: 'overloaded_error', message: error?.message ?? 'Controlled transient failure' } }] : []),
+    { type: 'message_stop' },
   ];
   return new Response(events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(''),
     { headers: { 'content-type': 'text/event-stream' } });

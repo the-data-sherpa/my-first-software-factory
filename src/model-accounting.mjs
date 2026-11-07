@@ -2,19 +2,32 @@ import { calculateCost } from '@earendil-works/pi-ai';
 
 const count = (value) => Number.isSafeInteger(value) && value >= 0;
 
-/** Responses output_tokens ALREADY includes reasoning_tokens. Missing/invalid usage is unknown,
- * not the zero-initialized Usage object emitted by pi-ai. Only terminal provider events count.
+/** Anthropic input_tokens excludes cache reads/writes; output_tokens includes thinking.
+ * Retain the stream's input counters, but publish usage only on a terminal message_delta.
+ * Missing/invalid usage stays unknown, not pi-ai's zero-initialized Usage object.
  */
-export function terminalUsage(event) {
-  if (!['response.completed', 'response.incomplete', 'response.failed'].includes(event?.type)) return;
-  const value = event.response?.usage;
-  if (!value || !count(value.input_tokens) || !count(value.output_tokens)) return;
-  const cacheRead = value.input_tokens_details?.cached_tokens ?? 0;
-  const cacheWrite = value.input_tokens_details?.cache_write_tokens ?? 0;
-  const reasoning = value.output_tokens_details?.reasoning_tokens ?? 0;
-  if (![cacheRead, cacheWrite, reasoning].every(count) || cacheRead + cacheWrite > value.input_tokens || reasoning > value.output_tokens) return;
-  return { input: value.input_tokens - cacheRead - cacheWrite, output: value.output_tokens, cacheRead, cacheWrite, reasoning,
-    totalTokens: value.input_tokens + value.output_tokens };
+export function terminalUsage() {
+  let value;
+  return event => {
+    if (event?.type === 'message_start') value = event.message?.usage ? { ...event.message.usage } : undefined;
+    if (event?.type !== 'message_delta' || !value) return;
+    for (const [key, field] of Object.entries(event.usage ?? {})) {
+      if (field == null) continue;
+      value[key] = ['cache_creation', 'output_tokens_details'].includes(key)
+        ? { ...value[key], ...Object.fromEntries(Object.entries(field).filter(([, count]) => count != null)) }
+        : field;
+    }
+    if (!event.delta?.stop_reason || !count(event.usage?.output_tokens) || !count(value.input_tokens)) return;
+    const cacheRead = value.cache_read_input_tokens ?? 0;
+    const cacheWrite = value.cache_creation_input_tokens ?? 0;
+    const reasoning = value.output_tokens_details?.thinking_tokens ?? 0;
+    const cacheWrite1h = value.cache_creation?.ephemeral_1h_input_tokens;
+    if (![cacheRead, cacheWrite, reasoning].every(count) || reasoning > value.output_tokens
+      || (cacheWrite1h !== undefined && (!count(cacheWrite1h) || cacheWrite1h > cacheWrite))) return;
+    return { input: value.input_tokens, output: value.output_tokens, cacheRead, cacheWrite, reasoning,
+      ...(cacheWrite1h === undefined ? {} : { cacheWrite1h }),
+      totalTokens: value.input_tokens + value.output_tokens + cacheRead + cacheWrite };
+  };
 }
 
 export function pricedUsage(model, usage) {

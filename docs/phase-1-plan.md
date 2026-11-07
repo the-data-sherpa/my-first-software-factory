@@ -68,6 +68,8 @@ The owner selected `openai/gpt-6.1-sol` and accepted the other recommendations i
 - **Q22: Stop and recovery.** Stop cancels the model request and contained tools, retains artifacts, and records a terminal stopped result. Graceful backend shutdown does the same. After a crash, inspect passively and show interruption without automatic execution. Explicit resume requires review of partial effects, verified containment, and remaining original limits; it never resets the budget or blindly repeats unsafe effects. If safe resume is unavailable or limits are exhausted, require an explicit new linked run. Inspection and another start must not wake old pending work.
 - **Q23: Initial model route.** Select `openai/gpt-6.1-sol` initially, until the web UI. Do not substitute Codex, OpenRouter, or the local auto alias. Credentials and live availability remain unverified; a failed preflight blocks execution rather than causing a fallback. No live inference during the interview.
 
+On 2026-11-06 the owner declined API keys and required existing Pi OAuth. [ADR 0006](adr/0006-use-capped-anthropic-oauth-in-phase-1.md) supersedes Q23's initial route with fixed `anthropic/claude-sonnet-5-5` at low adaptive effort, preserving the original requested output caps and all other limits. The historical interview choices below remain recorded; the route change is not live acceptance.
+
 ## Target repository
 
 The factory's initial project is `~/Projects/vanguard`; see the updated [project plan](../README.md#first-factory-repository-maintenance).
@@ -112,7 +114,7 @@ These findings informed Q16's containment gate, Q22's recovery policy, and Q26's
 | Project ownership | One factory; project-scoped runs and work items (Q10, Q15) | Preserve ownership in application records; no multi-project management in Phase 1 |
 | Repository and dependencies | Local `main`, plain Git, Bun, operator-prepared private bundle (Q11, Q18, Q20) | Verify frozen dependency preparation, script suppression, and the real toolchain profile |
 | Task input | Immutable owner brief; address normalization selected (Q19, Q21) | Capture the exact admitted source and brief without altering the original checkout |
-| Models and limits | `openai/gpt-6.1-sol` and numerical profile (Q23, Q26) | Verify cap-compatible authentication, bounded live availability, and actual enforcement |
+| Models and limits | Fixed `anthropic/claude-sonnet-5-5` via Pi OAuth, low adaptive effort, original numerical profile (ADR 0006, Q26) | Verify cap-compatible authentication, bounded live availability, and actual enforcement |
 | Output and retention | Runner-backed readiness, honest incomplete outcomes, private retention (Q14, Q17, Q24) | Capture complete patches and receipts bound to the tested source |
 | Tool boundary | Containment before repository tools (Q16) | Validate real mounts, environment, network denial, resource limits, and cleanup before use |
 | Stop and recovery | Explicit control and per-run execution stores (Q22, Q25) | Verify cancellation, reconciliation, budget continuity, and no accidental wakeups |
@@ -149,7 +151,7 @@ The owner accepted Q24–Q26 on 2026-11-02.
 | Input and file-tool bounds | 64 KiB task brief and text writes; 16 KiB per file-read response, with explicit pagination |
 | Initial no-tool smoke | One attempt, 60-second full-stream deadline, 1,024 requested output tokens; counts within run limits |
 
-The output-cap requirement needs the API-key path that emits `max_output_tokens`. If the selected authentication path omits or rejects that cap, block preflight; do not switch routes or silently run uncapped. ModelRuntime continues to own credential integration.
+The current output-cap requirement uses the selected Anthropic OAuth path's `max_tokens`, including thinking (ADR 0006). The earlier OpenAI API-key requirement is historical and superseded. If the selected authentication path omits or rejects its cap, block preflight; do not switch routes or silently run uncapped. ModelRuntime continues to own credential integration; no API key is requested.
 Unknown usage consumes the attempt and conservatively reserves its requested output allowance, without presenting the reservation as measured consumption or billed spend. The profile is not a guaranteed monetary ceiling.
 For the initial single-run backend, use an explicit foreground transient resource scope only after verifying enforcement. This installs no service or boot startup. If the OS envelope, scratch size, script suppression, or actual toolchain cannot meet the profile, block instead of weakening it. An OOM kill may terminate the backend itself; Q22's interrupted/passive-recovery contract still applies.
 

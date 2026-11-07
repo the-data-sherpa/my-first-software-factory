@@ -2,16 +2,17 @@ import { FactoryError } from './storage.mjs';
 import { isDeepStrictEqual } from 'node:util';
 import { EXECUTOR_TOOLS, validateExecutorCall } from './executor-policy.mjs';
 import { verifyActivatedAdmission } from './admission.mjs';
-import { cancellableResponse } from './model-transport.mjs';
+import { fetchModelResponse } from './model-transport.mjs';
 import { terminalUsage, modelAccounting, pricedUsage } from './model-accounting.mjs';
 import { isRetryableAssistantError } from '@earendil-works/pi-ai/utils/retry';
 
-export const MODEL_ROUTE = 'openai/gpt-6.1-sol';
+export const SELECTED_MODEL = Object.freeze({ provider: 'anthropic', modelId: 'claude-sonnet-5-5' });
+export const MODEL_ROUTE = `${SELECTED_MODEL.provider}/${SELECTED_MODEL.modelId}`;
 export const MODEL_LIMITS = Object.freeze({ outputTokens: 8192, requestMs: 180_000, smokeOutputTokens: 1024, smokeMs: 60_000 });
-const endpoint = 'https://api.openai.com/v1/responses';
+const endpoint = 'https://api.anthropic.com/v1/messages?beta=true';
 
 export function modelFailure(reason) {
-  return { role: 'assistant', api: 'openai-responses', provider: 'openai', model: 'gpt-6.1-sol',
+  return { role: 'assistant', api: 'anthropic-messages', provider: SELECTED_MODEL.provider, model: SELECTED_MODEL.modelId,
     content: [], timestamp: Date.now(), stopReason: 'error',
     errorMessage: reason === 'MODEL_TRANSIENT' ? 'MODEL_TRANSIENT: service unavailable' : reason,
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
@@ -51,26 +52,31 @@ function boundedRequests({ modelRuntime, budget, signal, fetch = globalThis.fetc
     let model;
     let httpStatus;
     let dispatched = false;
+    const observeUsage = terminalUsage();
     const block = (code) => { failure = code; throw new FactoryError(code, code); };
     let message;
     try {
-      model = modelRuntime.getPhysicalModel('openai', 'gpt-6.1-sol');
-      if (!model || model.api !== 'openai-responses' || model.baseUrl !== 'https://api.openai.com/v1') block('MODEL_UNAVAILABLE');
-      const auth = await modelRuntime.checkAuth('openai', { signal: requestSignal });
+      model = modelRuntime.getPhysicalModel(SELECTED_MODEL.provider, SELECTED_MODEL.modelId);
+      if (!model || model.api !== 'anthropic-messages' || model.baseUrl !== 'https://api.anthropic.com') block('MODEL_UNAVAILABLE');
+      const auth = await modelRuntime.checkAuth(SELECTED_MODEL.provider, { signal: requestSignal });
       if (!auth) block('MODEL_AUTH_REQUIRED');
-      if (auth.type !== 'api_key') block('MODEL_AUTH_INCOMPATIBLE');
+      if (auth.type !== 'oauth') block('MODEL_AUTH_INCOMPATIBLE');
       // Pin effort in the request itself, not Pi's optional mid-conversation configuration items.
       const boundedModel = { ...model, compat: { ...model.compat, supportsMidConvoEffort: false,
-        ...(authorized ? { supportsAdditionalTools: false, supportsToolSearch: false } : {}) } };
+        supportsMidConvoSystemMessages: false, supportsMidConvoToolChanges: false,
+        supportsEagerToolInputStreaming: false, supportsStrictTools: false, allowedFallbackModels: [] } };
       const validatePayload = (payload) => {
-        if (!Number.isInteger(payload?.max_output_tokens) || payload.max_output_tokens < 16
-          || payload.max_output_tokens > requestedOutputTokens) block('MODEL_AUTH_INCOMPATIBLE');
-        if (payload.model !== 'gpt-6.1-sol' || payload.reasoning?.effort !== 'low' || payload.stream !== true
-          || payload.store !== false || payload.background || (!authorized && payload.tools?.length)) block('MODEL_PAYLOAD_REJECTED');
+        if (!Number.isInteger(payload?.max_tokens) || payload.max_tokens < 1
+          || payload.max_tokens > requestedOutputTokens) block('MODEL_AUTH_INCOMPATIBLE');
+        if (payload.model !== SELECTED_MODEL.modelId || payload.output_config?.effort !== 'low'
+          || payload.thinking?.type !== 'adaptive' || payload.stream !== true || payload.background
+          || payload.fallbacks?.length || (!authorized && payload.tools?.length)) block('MODEL_PAYLOAD_REJECTED');
         if (authorized) {
-          const expected = EXECUTOR_TOOLS.map(tool => ({ type: 'function', ...tool, strict: false }));
+          const expected = EXECUTOR_TOOLS.map(tool => ({ name: tool.name, description: tool.description,
+            input_schema: { type: 'object', properties: tool.parameters.properties, required: tool.parameters.required } }));
           if (!isDeepStrictEqual(payload.tools, expected)
-            || payload.input?.some(item => ['additional_tools', 'tool_search_call', 'custom_tool_call'].includes(item.type))) block('MODEL_PAYLOAD_REJECTED');
+            || payload.messages?.some(item => Array.isArray(item.content)
+              && item.content.some(block => ['tool_addition', 'tool_removal'].includes(block.type)))) block('MODEL_PAYLOAD_REJECTED');
         }
       };
       message = await modelRuntime.completeSimple(boundedModel, { messages }, {
@@ -78,7 +84,7 @@ function boundedRequests({ modelRuntime, budget, signal, fetch = globalThis.fetc
         cacheRetention: 'none', sessionId, signal: requestSignal, onPayload: validatePayload,
         timeoutMs: Math.max(1, requestDeadlineAt - clock.now()),
         onProviderStreamEvent: (event) => {
-          const observed = terminalUsage(event);
+          const observed = observeUsage(event);
           if (!observed) return;
           usage = observed;
           budget.observeModelUsage(reservation.id, modelAccounting({ usage, model, requestedOutputTokens,
@@ -88,13 +94,13 @@ function boundedRequests({ modelRuntime, budget, signal, fetch = globalThis.fetc
           budget.assertActive();
           if (requestSignal.aborted || clock.now() >= requestDeadlineAt) block(failure ?? 'MODEL_CANCELLED');
           if (String(url) !== endpoint) block('MODEL_ROUTE_REJECTED');
-          if (!new Headers(options.headers).get('authorization')?.startsWith('Bearer sk-')) block('MODEL_AUTH_INCOMPATIBLE');
+          const headers = new Headers(options.headers);
+          if (!headers.get('authorization')?.startsWith('Bearer sk-ant-oat') || headers.has('x-api-key')) block('MODEL_AUTH_INCOMPATIBLE');
           validatePayload(JSON.parse(options.body));
           if (dispatched) block('MODEL_PROVIDER_RETRY_DISABLED');
           dispatched = true;
-          const response = await fetch(url, { ...options, redirect: 'error' });
-          httpStatus = response.status;
-          const transport = cancellableResponse(response, requestSignal);
+          const transport = await fetchModelResponse(fetch, url, { ...options, redirect: 'error' }, requestSignal);
+          httpStatus = transport.response.status;
           transports.push(transport);
           return transport.response;
         },
@@ -102,7 +108,7 @@ function boundedRequests({ modelRuntime, budget, signal, fetch = globalThis.fetc
       if (message.stopReason === 'error' || message.stopReason === 'aborted') {
         failure ??= requestSignal.aborted ? 'MODEL_CANCELLED'
           : [401, 403].includes(httpStatus) ? 'MODEL_AUTH_REJECTED'
-          : /max_output_tokens/.test(message.errorMessage ?? '') ? 'MODEL_CAP_REJECTED'
+          : /max_tokens/.test(message.errorMessage ?? '') ? 'MODEL_CAP_REJECTED'
           : isRetryableAssistantError(message) ? 'MODEL_TRANSIENT' : 'MODEL_REQUEST_FAILED';
         message = modelFailure(failure);
       } else if (message.stopReason === 'length') {

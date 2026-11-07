@@ -1,10 +1,23 @@
 import { FactoryError } from './storage.mjs';
 
+export async function fetchModelResponse(fetch, url, options, signal) {
+  const controller = new AbortController();
+  const abort = () => controller.abort(options.signal.reason);
+  options.signal.addEventListener('abort', abort, { once: true });
+  if (options.signal.aborted) abort();
+  let response;
+  try { response = await fetch(url, { ...options, signal: controller.signal }); }
+  finally { options.signal.removeEventListener('abort', abort); }
+  // After headers, cancel and join the reader before the SDK can error the native
+  // fetch body through its signal. Header waits still abort the underlying fetch.
+  return cancellableResponse(response, signal);
+}
+
 /** Make cancellation cover the response BODY, not merely fetch's response-header promise.
  * The returned drain joins the underlying reader's cancellation, even when that is asynchronous.
  * A transport that cannot confirm cleanup must keep admission fenced, not pretend to be stopped.
  */
-export function cancellableResponse(response, signal) {
+function cancellableResponse(response, signal) {
   if (!response.body) return { response, drain: async () => {} };
   const reader = response.body.getReader();
   let controller;

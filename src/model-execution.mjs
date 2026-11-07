@@ -5,7 +5,7 @@ import { openNodeSqliteStorage } from '@earendil-works/pi-durable/storage/sqlite
 import { AssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-stream';
 import { privateFile, FactoryError, STORAGE_VERSIONS } from './storage.mjs';
 import { executionReceiptDocument as Receipt, readExecutionResult } from './execution.mjs';
-import { createModelRequests, modelFailure, MODEL_ROUTE } from './model.mjs';
+import { createModelRequests, modelFailure, MODEL_ROUTE, SELECTED_MODEL } from './model.mjs';
 
 /** Explicit owner-operated model adapter. No default runtime creation, tools, extensions,
  * resource discovery or automatic enablement. 'bounded-no-tools' exercises the normal request
@@ -39,7 +39,7 @@ export function createModelExecution({ modelRuntime, fetch, clock, purpose = 'pr
       // Narrow Models facade: no compaction, deferred API or alternate route can bypass the gate.
       const models = {
         getAuth() { throw new FactoryError('MODEL_API_DISABLED', 'Only factory-bounded model requests are enabled.'); },
-        getModel: (provider, id) => provider === 'openai' && id === 'gpt-6.1-sol' ? modelRuntime.getPhysicalModel(provider, id) : undefined,
+        getModel: (provider, id) => provider === SELECTED_MODEL.provider && id === SELECTED_MODEL.modelId ? modelRuntime.getPhysicalModel(provider, id) : undefined,
         streamSimple(_model, transcript, options) {
           const stream = new AssistantMessageEventStream();
           (async () => {
@@ -77,7 +77,7 @@ export function createModelExecution({ modelRuntime, fetch, clock, purpose = 'pr
         throw new FactoryError('RECEIPT_EXISTS', 'This run already has an execution submission. Inspection is passive; resume is unavailable.');
       }
       root = await harness.root(context, { agent: {
-        model: { provider: 'openai', modelId: 'gpt-6.1-sol' }, thinkingLevel: 'low', tools: [], extensions: [], maxTurns: 1,
+        model: SELECTED_MODEL, thinkingLevel: 'low', tools: [], extensions: [], maxTurns: 1,
       } });
       budget.assertActive();
       const submissionId = await harness.commit(async (tx) => {

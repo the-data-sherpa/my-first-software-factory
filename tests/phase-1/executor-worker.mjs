@@ -10,6 +10,7 @@ import { admitWorkspace, prepareWorkspace } from '../../src/workspace.mjs';
 import { dependencyFixture } from '../../src/dependencies-diagnostics.mjs';
 import { createRepositoryExecution, verifyExecutorHandoff, inspectExecutor, validateExecutorScope, inspectExecution } from '../../src/execution.mjs';
 import { controlledRuntime, controlledTransport, eventsResponse } from './model-fixtures.mjs';
+import { executorToolResponse as toolResponse } from '../fixtures/executor-model.mjs';
 import { until } from '../phase-0/helpers.mjs';
 
 const [root, scenario = 'draft'] = process.argv.slice(2);
@@ -43,31 +44,13 @@ let initializations = 0; let reportingFailed = false; let handoffToken;
 let sourceRun;
 async function handleReady() { await until(async () => handle, Boolean); }
 const scope = validateExecutorScope({ writePaths: ['helper.mjs', 'helper.test.mjs'] });
-function toolResponse(name, args, id, text = '', outputTokens = 20) {
-  const call = { type: 'function_call', id: `fc_${id}`, call_id: `call_${id}`, name, arguments: JSON.stringify(args), status: 'completed' };
-  const events = [
-    { type: 'response.created', response: { id: `resp_${id}`, status: 'in_progress' } },
-    ...(text ? [
-      { type: 'response.output_item.added', output_index: 0, item: { type: 'message', id: `msg_${id}`, role: 'assistant', content: [] } },
-      { type: 'response.content_part.added', output_index: 0, content_index: 0, part: { type: 'output_text', text: '', annotations: [] } },
-      { type: 'response.output_text.delta', output_index: 0, content_index: 0, delta: text },
-      { type: 'response.output_item.done', output_index: 0, item: { type: 'message', id: `msg_${id}`, role: 'assistant', content: [{ type: 'output_text', text, annotations: [] }] } },
-    ] : []),
-    { type: 'response.output_item.added', output_index: text ? 1 : 0, item: { ...call, arguments: '' } },
-    { type: 'response.function_call_arguments.delta', output_index: text ? 1 : 0, delta: call.arguments },
-    { type: 'response.output_item.done', output_index: text ? 1 : 0, item: call },
-    { type: 'response.completed', response: { id: `resp_${id}`, status: 'completed', output: [call],
-      usage: { input_tokens: 20, output_tokens: outputTokens, total_tokens: 20 + outputTokens } } },
-  ];
-  return new Response(events.map(e => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join(''), { headers: { 'content-type': 'text/event-stream' } });
-}
 const transport = controlledTransport(async ({ payload }, index) => {
   if (index === 1) { assert.equal(payload.tools?.length ?? 0, 0); return scenario === 'preflight-failed' ? new Response('refused', { status: 401 }) : eventsResponse(); }
-  assert.equal(payload.max_output_tokens, 8192); assert.equal(payload.reasoning.effort, 'low');
-  assert.equal(payload.background, undefined); assert.equal(payload.store, false);
+  assert.equal(payload.max_tokens, 8192); assert.equal(payload.output_config.effort, 'low');
+  assert.equal(payload.background, undefined); assert.equal(payload.store, undefined);
   assert.deepEqual(payload.tools.map(t => t.name), ['read_file', 'write_file', 'run_check']);
-  assert.ok(payload.input.some(i => i.role === 'developer' && i.content.includes('Immutable task context:') && i.content.includes('evidence.md')));
-  if (index > (scenario === 'transient-retry' ? 3 : 2)) assert.ok(payload.input.some(i => i.type === 'function_call_output'));
+  assert.ok(payload.system.some(i => i.text.includes('Immutable task context:') && i.text.includes('evidence.md')));
+  if (index > (scenario === 'transient-retry' ? 3 : 2)) assert.ok(payload.messages.some(i => Array.isArray(i.content) && i.content.some(block => block.type === 'tool_result')));
   if (index === 2 && ['model-drain', 'model-drain-report', 'stop-model', 'shutdown-model', 'deadline-model'].includes(scenario)) {
     return new Response(new ReadableStream({ cancel() {
       if (scenario.startsWith('model-drain')) throw new Error('Controlled model drain refusal');
@@ -95,7 +78,7 @@ const transport = controlledTransport(async ({ payload }, index) => {
   if (index === 4) return toolResponse('write_file', { path: 'helper.test.mjs', text: 'import assert from "node:assert/strict";\nimport { normalize } from "./helper.mjs";\nassert.equal(normalize("100 Main # 2  "), "100 Main # 2");\n' }, 'test');
   if (index === 5) return toolResponse('run_check', { name: 'vitest' }, 'vitest');
   if (index === 6 && ['check-assertion-feedback', 'check-encoded-feedback'].includes(scenario)) {
-    const outputs = payload.input.filter(item => item.type === 'function_call_output').map(item => item.output);
+    const outputs = payload.messages.flatMap(item => Array.isArray(item.content) ? item.content : []).filter(item => item.type === 'tool_result').map(item => item.content);
     assert.ok(outputs.every(output => Buffer.byteLength(output) <= 16384));
     const feedback = outputs.map(output => JSON.parse(output));
     if (scenario === 'check-assertion-feedback') assert.ok(feedback.some(item => item.passed === false && item.reason === 'exit'));

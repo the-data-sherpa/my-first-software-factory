@@ -5,16 +5,17 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fork } from 'node:child_process';
 import { once } from 'node:events';
+import { createServer } from 'node:http';
 import { until } from '../phase-0/helpers.mjs';
 import { createModelRequests } from '../../src/execution.mjs';
 import { controlledRuntime, retainedBudget, controlledTransport, eventsResponse } from './model-fixtures.mjs';
 
 const messages = [{ role: 'user', content: 'Answer without tools.', timestamp: 1 }];
 
-test('OAuth and non-API keys block without transport I/O or raw auth errors', async () => {
+test('API keys and malformed OAuth block without transport I/O or raw auth errors', async () => {
   for (const [credential, code] of [
-    [{ type: 'oauth', access: 'sensitive-access', refresh: 'sensitive-refresh', expires: 0 }, 'MODEL_AUTH_INCOMPATIBLE'],
-    [{ type: 'api_key', key: 'sensitive-non-api-token' }, 'MODEL_AUTH_INCOMPATIBLE'],
+    [{ type: 'api_key', key: 'sensitive-access' }, 'MODEL_AUTH_INCOMPATIBLE'],
+    [{ type: 'oauth', access: 'sensitive-invalid-token', refresh: 'unused', expires: Date.now() + 3_600_000 }, 'MODEL_AUTH_INCOMPATIBLE'],
   ]) {
     const transport = controlledTransport();
     const retained = retainedBudget();
@@ -84,7 +85,6 @@ test('the full-stream deadline aborts a stalled body and waits for its cancellat
   pending.then(() => { settled = true; });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(settled, false);
-  assert.equal(transport.requests[1].signal.aborted, true);
   drained.resolve();
   const result = await pending;
   assert.equal(result.reason, 'MODEL_REQUEST_DEADLINE');
@@ -100,7 +100,7 @@ test('missing terminal usage remains a full reservation, while failed and length
     [() => eventsResponse({ usage: null }), undefined, undefined],
     [() => eventsResponse({ status: 'failed', error: { code: 'server_error', message: 'sensitive-provider-error' }, text: 'sensitive-partial' }), 'MODEL_TRANSIENT', 10],
     [() => eventsResponse({ status: 'incomplete' }), 'MODEL_OUTPUT_LIMIT', 10],
-    [() => new Response(JSON.stringify({ error: { message: 'sensitive max_output_tokens is unsupported', type: 'invalid_request_error' } }), { status: 400 }), 'MODEL_CAP_REJECTED', undefined],
+    [() => new Response(JSON.stringify({ error: { message: 'sensitive max_tokens is unsupported', type: 'invalid_request_error' } }), { status: 400 }), 'MODEL_CAP_REJECTED', undefined],
   ]) {
     const retained = retainedBudget();
     const transport = controlledTransport(reply);
@@ -152,11 +152,49 @@ test('smoke header waits use at most 60 seconds and never extend the original ru
   }
 });
 
+test('cancellation drains a native fetch body held open by the Messages server', { timeout: 5000 }, async (t) => {
+  const closed = Promise.withResolvers();
+  const received = Promise.withResolvers();
+  const server = createServer(async (request, response) => {
+    for await (const _chunk of request) { /* Consume the request before sending SSE. */ }
+    response.on('close', closed.resolve);
+    response.writeHead(200, { 'content-type': 'text/event-stream' });
+    response.write('event: message_start\ndata: {"type":"message_start","message":{"id":"held","role":"assistant","content":[],"usage":{"input_tokens":500,"output_tokens":0}}}\n\n');
+  });
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const retained = retainedBudget();
+  const requests = createModelRequests({ modelRuntime: await controlledRuntime(), budget: retained.budget,
+    fetch: async (_url, options) => {
+      const response = await fetch(`http://127.0.0.1:${server.address().port}/v1/messages`, options);
+      received.resolve();
+      return response;
+    } });
+  t.after(() => requests.close().catch(() => {}));
+  const pending = requests.preflight();
+  pending.catch(() => {});
+  await received.promise;
+  await new Promise(resolve => setImmediate(resolve));
+  await requests.cancel();
+  const result = await pending;
+  await requests.close();
+  await closed.promise;
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'MODEL_CANCELLED');
+  assert.equal(result.accounting.unmeasuredOutputTokens, 1024);
+  assert.equal(result.accounting.cost.status, 'unknown');
+  assert.equal(retained.inspect().reservations[0].state, 'settled');
+});
+
 test('unconfirmed body drainage rejects closure and keeps the reservation uncertain', async () => {
   const entered = Promise.withResolvers();
   const retained = retainedBudget();
   const transport = controlledTransport(() => new Response(new ReadableStream({ start() { entered.resolve(); },
-    cancel() { throw new Error('sensitive cleanup failure'); } }), { headers: { 'content-type': 'text/event-stream' } }));
+    cancel() { throw new DOMException('sensitive cleanup failure', 'AbortError'); } }), { headers: { 'content-type': 'text/event-stream' } }));
   const requests = createModelRequests({ modelRuntime: await controlledRuntime(), budget: retained.budget, fetch: transport.fetch });
   const pending = requests.preflight();
   const failed = assert.rejects(pending, { code: 'MODEL_DRAIN_FAILED' });
@@ -197,8 +235,9 @@ test('cancellation during final response drainage cannot pass preflight after th
   }, cancel() { draining.resolve(); return release.promise; } }), { headers: { 'content-type': 'text/event-stream' } }));
   const requests = createModelRequests({ modelRuntime: await controlledRuntime(), budget: retained.budget, fetch: transport.fetch });
   const pending = requests.preflight();
-  await draining.promise;
+  await until(() => retained.inspect(), run => Boolean(run.reservations[0]?.accounting?.usage), 500);
   const closing = requests.cancel();
+  await draining.promise;
   release.resolve();
   const result = await pending;
   await closing;
@@ -227,21 +266,31 @@ test('configuration cannot remove caps, elevate reasoning, enable background wor
   t.after(() => rm(directory, { recursive: true, force: true }));
   const modelsPath = join(directory, 'models.json');
   for (const [provider, reason] of [
-    [{ compat: { supportsMaxOutputTokens: false } }, 'MODEL_AUTH_INCOMPATIBLE'],
-    [{ modelOverrides: { 'gpt-6.1-sol': { samplingParams: { max_output_tokens: 32768 } } } }, 'MODEL_AUTH_INCOMPATIBLE'],
-    [{ modelOverrides: { 'gpt-6.1-sol': { samplingParams: { reasoning: { effort: 'high' } } } } }, 'MODEL_PAYLOAD_REJECTED'],
-    [{ modelOverrides: { 'gpt-6.1-sol': { samplingParams: { background: true } } } }, 'MODEL_PAYLOAD_REJECTED'],
-    [{ modelOverrides: { 'gpt-6.1-sol': { samplingParams: { model: 'a-fallback' } } } }, 'MODEL_PAYLOAD_REJECTED'],
+    [{ compat: { forceAdaptiveThinking: false } }, 'MODEL_AUTH_INCOMPATIBLE'],
+    [{ modelOverrides: { 'claude-sonnet-5-5': { samplingParams: { max_tokens: 32768 } } } }, undefined],
+    [{ modelOverrides: { 'claude-sonnet-5-5': { samplingParams: { output_config: { effort: 'high' } } } } }, undefined],
+    [{ modelOverrides: { 'claude-sonnet-5-5': { samplingParams: { background: true } } } }, undefined],
+    [{ modelOverrides: { 'claude-sonnet-5-5': { samplingParams: { model: 'a-fallback' } } } }, undefined],
     [{ baseUrl: 'https://not-the-selected-route.invalid/v1' }, 'MODEL_UNAVAILABLE'],
   ]) {
-    await writeFile(modelsPath, JSON.stringify({ providers: { openai: provider } }), { mode: 0o600 });
+    await writeFile(modelsPath, JSON.stringify({ providers: { anthropic: provider } }), { mode: 0o600 });
     const retained = retainedBudget();
     const transport = controlledTransport();
     const requests = createModelRequests({ modelRuntime: await controlledRuntime(undefined, { modelsPath }), budget: retained.budget, fetch: transport.fetch });
     const result = await requests.preflight();
+    assert.equal(result.ok, reason === undefined);
     assert.equal(result.reason, reason);
-    assert.equal(result.ok, false);
-    assert.equal(transport.requests.length, 0);
+    if (result.ok) {
+      assert.equal(transport.requests.length, 1);
+      const { payload } = transport.requests[0];
+      assert.equal(payload.model, 'claude-sonnet-5-5');
+      assert.equal(payload.max_tokens, 1024);
+      assert.equal(payload.output_config.effort, 'low');
+      assert.equal(payload.thinking.type, 'adaptive');
+      assert.equal(payload.background, undefined);
+    } else {
+      assert.equal(transport.requests.length, 0);
+    }
     await requests.close();
   }
 });
@@ -284,11 +333,11 @@ test('closing request ownership and retrying the smoke identity cannot admit mor
   assert.equal(retained.inspect().counters.modelAttempts, 1);
 });
 
-test('selected-model smoke and normal requests emit capped low-reasoning API-key payloads and reserve before I/O', async () => {
+test('selected OAuth smoke and normal requests emit capped low-adaptive payloads and reserve before I/O', async () => {
   const retained = retainedBudget();
   const transport = controlledTransport((_request, count) => {
     assert.equal(retained.inspect().counters.modelAttempts, count);
-    return new Response('event: response.completed\ndata: {"type":"response.completed","response":{"id":"r","status":"completed","output":[],"usage":{"input_tokens":20,"output_tokens":10,"output_tokens_details":{"reasoning_tokens":4},"total_tokens":30}}}\n\n', { headers: { 'content-type': 'text/event-stream' } });
+    return eventsResponse();
   });
   const requests = createModelRequests({ modelRuntime: await controlledRuntime(), budget: retained.budget, fetch: transport.fetch });
   assert.equal((await requests.preflight()).ok, true);
@@ -297,13 +346,14 @@ test('selected-model smoke and normal requests emit capped low-reasoning API-key
   assert.equal(normal.message.usage.cost.output.toFixed(6), '0.000100');
   assert.equal(transport.requests.length, 2);
   for (const [index, request] of transport.requests.entries()) {
-    assert.equal(request.url, 'https://api.openai.com/v1/responses');
-    assert.equal(request.headers.get('authorization'), 'Bearer sk-controlled-not-a-secret');
-    assert.equal(request.payload.model, 'gpt-6.1-sol');
-    assert.equal(request.payload.max_output_tokens, index === 0 ? 1024 : 8192);
-    assert.equal(request.payload.reasoning.effort, 'low');
+    assert.equal(request.url, 'https://api.anthropic.com/v1/messages?beta=true');
+    assert.equal(request.headers.get('authorization'), 'Bearer sk-ant-oat-controlled-not-a-secret');
+    assert.equal(request.payload.model, 'claude-sonnet-5-5');
+    assert.equal(request.payload.max_tokens, index === 0 ? 1024 : 8192);
+    assert.equal(request.payload.output_config.effort, 'low');
+    assert.equal(request.payload.thinking.type, 'adaptive');
     assert.equal(request.payload.stream, true);
-    assert.equal(request.payload.store, false);
+    assert.equal(request.payload.store, undefined);
     assert.equal(request.payload.background, undefined);
     assert.equal(request.payload.tools, undefined);
   }
@@ -314,7 +364,83 @@ test('selected-model smoke and normal requests emit capped low-reasoning API-key
   assert.equal(saved.reservations[1].accounting.usage.reasoning, 4);
   assert.equal(saved.reservations[1].accounting.usage.totalTokens, 30);
   assert.equal(saved.reservations[1].accounting.cost.status, 'estimated');
-  // 20 input at $2/M + 10 output at $10/M. The 4 reasoning tokens are already in the 10.
+  // Pinned catalog: 20 input at $2/M + 10 output at $10/M, including thinking.
+  // This is an estimate, not OAuth billing or a monetary ceiling.
   assert.equal(saved.reservations[1].accounting.cost.usd.toFixed(6), '0.000140');
   assert.equal(saved.reservations[1].accounting.unmeasuredOutputTokens, 0);
+});
+
+test('OAuth accounting keeps cache input separate and includes thinking once in output', async () => {
+  const retained = retainedBudget();
+  const transport = controlledTransport(() => eventsResponse({ usage: { input_tokens: 20, output_tokens: 10,
+    cache_read_input_tokens: 40, cache_creation_input_tokens: 7, output_tokens_details: { reasoning_tokens: 4 } } }));
+  const requests = createModelRequests({ modelRuntime: await controlledRuntime(), budget: retained.budget, fetch: transport.fetch });
+  const result = await requests.preflight();
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.accounting.usage, { input: 20, output: 10, cacheRead: 40, cacheWrite: 7, reasoning: 4, totalTokens: 77 });
+  assert.equal(result.accounting.cost.status, 'estimated');
+  assert.equal(result.accounting.cost.usd.toFixed(7), '0.0001615');
+  await requests.close();
+});
+
+test('nullable OAuth delta counters preserve measured usage and pinned catalog estimates', async () => {
+  const usage = { input_tokens: 500, output_tokens: 10, cache_read_input_tokens: 4000, cache_creation_input_tokens: 7,
+    cache_creation: { ephemeral_1h_input_tokens: 3 }, output_tokens_details: { reasoning_tokens: 4 } };
+  const preserved = { input: 500, output: 200, cacheRead: 4000, cacheWrite: 7, cacheWrite1h: 3, reasoning: 4, totalTokens: 4707 };
+  for (const [deltaUsage, expected, usd] of [
+    [{ output_tokens: 200, input_tokens: 500, cache_read_input_tokens: null, cache_creation_input_tokens: null,
+      cache_creation: null, output_tokens_details: null }, preserved, '0.0034220'],
+    [{ output_tokens: 200, input_tokens: null, cache_read_input_tokens: null, cache_creation_input_tokens: null,
+      cache_creation: { ephemeral_1h_input_tokens: null }, output_tokens_details: { thinking_tokens: null } }, preserved, '0.0034220'],
+    [{ output_tokens: 200 }, preserved, '0.0034220'],
+    [{ output_tokens: 200, input_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0,
+      cache_creation: { ephemeral_1h_input_tokens: 0 }, output_tokens_details: { thinking_tokens: 0 } },
+    { input: 0, output: 200, cacheRead: 0, cacheWrite: 0, cacheWrite1h: 0, reasoning: 0, totalTokens: 200 }, '0.0020000'],
+    [{ output_tokens: null }, undefined, undefined],
+  ]) {
+    const retained = retainedBudget();
+    const transport = controlledTransport(() => eventsResponse({ usage, deltaUsage }));
+    const requests = createModelRequests({ modelRuntime: await controlledRuntime(), budget: retained.budget, fetch: transport.fetch });
+    try {
+      const smoke = await requests.preflight();
+      const normal = await requests.request({ generationId: 'nullable-usage', messages });
+      for (const [index, result] of [smoke, normal].entries()) {
+        assert.equal(result.ok, true);
+        assert.deepEqual(result.accounting.usage, expected);
+        assert.equal(result.accounting.unmeasuredOutputTokens, expected ? 0 : index === 0 ? 1024 : 8192);
+        assert.equal(result.accounting.cost.status, expected ? 'estimated' : 'unknown');
+        assert.equal(result.accounting.cost.usd?.toFixed(7), usd);
+        assert.deepEqual(retained.inspect().reservations[index].accounting, result.accounting);
+        if (expected) {
+          const { cost, ...measured } = result.message.usage;
+          assert.deepEqual(measured, expected);
+          assert.equal(cost.total.toFixed(7), usd);
+          assert.equal(cost.totalFromProvider, false);
+        }
+      }
+    } finally { await requests.close(); }
+  }
+});
+
+test('actual OAuth payload mutations are refused before transport', async () => {
+  for (const [patch, reason] of [
+    [{ max_tokens: 0 }, 'MODEL_AUTH_INCOMPATIBLE'], [{ max_tokens: 1025 }, 'MODEL_AUTH_INCOMPATIBLE'],
+    [{ output_config: { effort: 'high' } }, 'MODEL_PAYLOAD_REJECTED'],
+    [{ thinking: { type: 'disabled' } }, 'MODEL_PAYLOAD_REJECTED'],
+    [{ model: 'claude-opus-5-5' }, 'MODEL_PAYLOAD_REJECTED'],
+    [{ background: true }, 'MODEL_PAYLOAD_REJECTED'],
+    [{ fallbacks: [{ model: 'claude-opus-5-5' }] }, 'MODEL_PAYLOAD_REJECTED'],
+    [{ tools: [{ name: 'shell' }] }, 'MODEL_PAYLOAD_REJECTED'],
+  ]) {
+    const runtime = await controlledRuntime();
+    const complete = runtime.completeSimple.bind(runtime);
+    runtime.completeSimple = (model, context, options) => complete(model, context, { ...options,
+      onPayload(payload) { Object.assign(payload, patch); return options.onPayload(payload); } });
+    const retained = retainedBudget(); const transport = controlledTransport();
+    const requests = createModelRequests({ modelRuntime: runtime, budget: retained.budget, fetch: transport.fetch });
+    assert.equal((await requests.preflight()).reason, reason);
+    assert.equal(transport.requests.length, 0);
+    assert.equal(retained.inspect().counters.modelAttempts, 1);
+    await requests.close();
+  }
 });
