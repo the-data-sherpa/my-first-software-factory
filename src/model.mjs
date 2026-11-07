@@ -2,7 +2,7 @@ import { FactoryError } from './storage.mjs';
 import { isDeepStrictEqual } from 'node:util';
 import { EXECUTOR_TOOLS, validateExecutorCall } from './executor-policy.mjs';
 import { verifyActivatedAdmission } from './admission.mjs';
-import { cancellableResponse } from './model-transport.mjs';
+import { fetchModelResponse } from './model-transport.mjs';
 import { terminalUsage, modelAccounting, pricedUsage } from './model-accounting.mjs';
 import { isRetryableAssistantError } from '@earendil-works/pi-ai/utils/retry';
 
@@ -99,9 +99,8 @@ function boundedRequests({ modelRuntime, budget, signal, fetch = globalThis.fetc
           validatePayload(JSON.parse(options.body));
           if (dispatched) block('MODEL_PROVIDER_RETRY_DISABLED');
           dispatched = true;
-          const response = await fetch(url, { ...options, redirect: 'error' });
-          httpStatus = response.status;
-          const transport = cancellableResponse(response, requestSignal);
+          const transport = await fetchModelResponse(fetch, url, { ...options, redirect: 'error' }, requestSignal);
+          httpStatus = transport.response.status;
           transports.push(transport);
           return transport.response;
         },

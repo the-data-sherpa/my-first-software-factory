@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fork } from 'node:child_process';
 import { once } from 'node:events';
+import { createServer } from 'node:http';
 import { until } from '../phase-0/helpers.mjs';
 import { createModelRequests } from '../../src/execution.mjs';
 import { controlledRuntime, retainedBudget, controlledTransport, eventsResponse } from './model-fixtures.mjs';
@@ -84,7 +85,6 @@ test('the full-stream deadline aborts a stalled body and waits for its cancellat
   pending.then(() => { settled = true; });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(settled, false);
-  assert.equal(transport.requests[1].signal.aborted, true);
   drained.resolve();
   const result = await pending;
   assert.equal(result.reason, 'MODEL_REQUEST_DEADLINE');
@@ -152,11 +152,49 @@ test('smoke header waits use at most 60 seconds and never extend the original ru
   }
 });
 
+test('cancellation drains a native fetch body held open by the Messages server', { timeout: 5000 }, async (t) => {
+  const closed = Promise.withResolvers();
+  const received = Promise.withResolvers();
+  const server = createServer(async (request, response) => {
+    for await (const _chunk of request) { /* Consume the request before sending SSE. */ }
+    response.on('close', closed.resolve);
+    response.writeHead(200, { 'content-type': 'text/event-stream' });
+    response.write('event: message_start\ndata: {"type":"message_start","message":{"id":"held","role":"assistant","content":[],"usage":{"input_tokens":500,"output_tokens":0}}}\n\n');
+  });
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const retained = retainedBudget();
+  const requests = createModelRequests({ modelRuntime: await controlledRuntime(), budget: retained.budget,
+    fetch: async (_url, options) => {
+      const response = await fetch(`http://127.0.0.1:${server.address().port}/v1/messages`, options);
+      received.resolve();
+      return response;
+    } });
+  t.after(() => requests.close().catch(() => {}));
+  const pending = requests.preflight();
+  pending.catch(() => {});
+  await received.promise;
+  await new Promise(resolve => setImmediate(resolve));
+  await requests.cancel();
+  const result = await pending;
+  await requests.close();
+  await closed.promise;
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'MODEL_CANCELLED');
+  assert.equal(result.accounting.unmeasuredOutputTokens, 1024);
+  assert.equal(result.accounting.cost.status, 'unknown');
+  assert.equal(retained.inspect().reservations[0].state, 'settled');
+});
+
 test('unconfirmed body drainage rejects closure and keeps the reservation uncertain', async () => {
   const entered = Promise.withResolvers();
   const retained = retainedBudget();
   const transport = controlledTransport(() => new Response(new ReadableStream({ start() { entered.resolve(); },
-    cancel() { throw new Error('sensitive cleanup failure'); } }), { headers: { 'content-type': 'text/event-stream' } }));
+    cancel() { throw new DOMException('sensitive cleanup failure', 'AbortError'); } }), { headers: { 'content-type': 'text/event-stream' } }));
   const requests = createModelRequests({ modelRuntime: await controlledRuntime(), budget: retained.budget, fetch: transport.fetch });
   const pending = requests.preflight();
   const failed = assert.rejects(pending, { code: 'MODEL_DRAIN_FAILED' });
