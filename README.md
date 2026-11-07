@@ -417,8 +417,8 @@ The Work item's `status` retains its creation outcome; it is historical, not a c
 Controlled Work items always have `reviewReady: false`; conditional owner readiness is not Approval or permission to publish and has no live acceptance yet.
 No-change, blocked, failed, stopped, and interrupted attempts retain their actual partial evidence without a manufactured successful Work item.
 
-Inspect an interrupted composed run first. It remains fenced pending trusted external reconciliation; `resume` refuses with `UNSAFE_RESUME`.
-Retirement or linked replacement requires a trusted quiescence assessment. Prospectively recorded composed runs can establish local quiescence only after the original backend has died and its exact foreground scope is terminal with no live descendants, under the same healthy host and user manager. Missing, legacy or mismatched identities and surviving work remain fenced; review text cannot override the assessment. An explicit linked replacement uses a separate pristine worktree from the original admitted commit. Old partial files, reservations and deadlines stay retained; remote cancellation and refunds are not established.
+Inspect an interrupted composed run before requesting `stop` or `replace`; `resume` refuses with `UNSAFE_RESUME`.
+Explicit controls can now assess local quiescence for prospectively recorded runs. Review text cannot override a failed assessment. See the [lifecycle replacement contract](docs/implementation/lifecycle-replacement.md) for prerequisites, retained evidence, and replacement source isolation.
 A qualified private artifact recorded just before a crash does not finalize the application run or create a Work item through inspection.
 Unconfirmed drainage outranks reporting failures. A reporting failure after confirmed drainage is a failed outcome, not an invented drain failure.
 See the [integration record](docs/implementation/ticket-09-integration.md), [composition](docs/implementation/qualified-execution.md), and [application contract](docs/implementation/qualification-application.md).

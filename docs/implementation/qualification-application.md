@@ -105,7 +105,7 @@ The stored snapshot and complete private patch are never truncated.
 `listRuns` and `inspectHistory` without a run ID do not hash artifacts.
 They show the bounded summary with `status: 'unverified'`, and a Work item with `freshness: 'unverified'`. This is never presented as current readiness.
 Inspection never calls the live verifier, loads a model, runs Git or checks, or schedules work. Opted-in interrupted runs refuse `resumeRun` with `UNSAFE_RESUME`.
-The general linked-replacement API requires trusted quiescence evidence for interrupted work. Prospective composed runs record the original run/source, foreground scope invocation, backend process identity, host boot/namespaces and user-manager lifetime before model/tool work. Explicit controls may establish local quiescence only after that backend dies and the exact original scope is terminal with an absent or empty descendant cgroup tree under the unchanged healthy manager. Workspace, dependency and implementation bindings must still validate. Missing legacy evidence, identity mismatch, manager/topology changes, unexpected draft effects and surviving work remain fenced; review text cannot override the assessment. This permits a new isolated linked run from the original admitted commit, never resume or replay of uncertain old writes. Old counters/deadlines and partial evidence remain; an interrupted remote attempt is not declared cancelled or refunded. The guarantee is limited to the existing contained local-draft tools.
+For explicit retirement and linked replacement of interrupted composed runs, see the [lifecycle replacement contract](lifecycle-replacement.md).
 
 ## Verification performed
 
