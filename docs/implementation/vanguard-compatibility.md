@@ -1,6 +1,6 @@
 # Bounded Vanguard compatibility work
 
-Current publication state: see the [owner-requested checkpoint](publication-checkpoint.md). The development snapshots below are historical; B/G are now combined, while full-suite/browser/final Spec verification was stopped at the owner's request.
+Current verification evidence and remaining gates: see [Phase 1 integrated verification](phase-1-integrated-verification.md). The development snapshots below and the [owner-requested publication checkpoint](publication-checkpoint.md) are historical.
 
 ## Authority and fixed point
 

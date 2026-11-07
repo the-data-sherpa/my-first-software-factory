@@ -380,7 +380,7 @@ All **328/328** parent-recorded exact scopes were inactive and empty.
 
 The baseline command and admission profile now use supported serial options instead of the unsupported `--minWorkers=1`; see the [command correction](docs/implementation/vitest-baseline-correction.md).
 Controlled CLI consumers and reporters do not establish real Vitest or ESLint compatibility.
-The later qualification corrections passed targeted application/CLI, composition, and lifetime rechecks, not another entire-suite run. Live provider acceptance, real Vanguard compatibility, and the #10 demonstration remain separate gates.
+See [Phase 1 integrated verification](docs/implementation/phase-1-integrated-verification.md) for current source-bound checks and remaining gates.
 See the [ticket #8 implementation record](docs/implementation/ticket-08.md) for interfaces, retained examples, and recovery limits.
 
 ### Unavailable executor policy
