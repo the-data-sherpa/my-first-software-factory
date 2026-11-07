@@ -10,7 +10,7 @@ import { qualifiedExecutorReply, scope, helperPath, testPath } from '../fixtures
 import { controlledRuntime, controlledTransport } from './model-fixtures.mjs';
 import { until } from '../phase-0/helpers.mjs';
 
-const [root, scenario] = process.argv.slice(2);
+const [root, scenario, stateDirectory] = process.argv.slice(2);
 let source = new URL('../../', import.meta.url);
 if (['stale-projection', 'stale-containment-entry', 'missing-qualification-module', 'unexpected-qualifier-close'].includes(scenario)) {
   const repository = fileURLToPath(source);
@@ -32,7 +32,7 @@ const { createQualifiedRepositoryExecution } = await import(new URL('src/executi
 const { serveFactory } = await import(new URL('src/control-server.mjs', source));
 const { admitWorkspace, prepareWorkspace } = await import(new URL('src/workspace.mjs', source));
 globalThis.fetch = async () => { throw new Error('Uncontrolled network forbidden'); };
-const fixture = await qualificationProject(root, scenario === 'final-lint' ? 'final-lint' : scenario === 'crash-check' ? 'slow' : 'green');
+const fixture = await qualificationProject(root, scenario === 'final-lint' ? 'final-lint' : scenario === 'crash-check' ? 'slow' : 'green', { stateDir: stateDirectory });
 const stateDir = fixture.workspaceIntent.stateDir;
 const project = { id: 'vanguard', repositoryPath: fixture.repositoryPath };
 const workspace = { admit: admitWorkspace, prepare: prepareWorkspace };

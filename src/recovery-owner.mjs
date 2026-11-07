@@ -34,7 +34,7 @@ async function host() {
   const service = await properties(false, `user@${uid()}.service`, 'ActiveState,SubState,MainPID,InvocationID');
   if (service.ActiveState !== 'active' || service.SubState !== 'running' || !hex(service.InvocationID)) fail();
   const manager = await processIdentity(Number(service.MainPID));
-  if (!live(manager) || (await properties(true, undefined, 'SystemState')).SystemState !== 'running') fail();
+  if (!live(manager) || !['running', 'degraded'].includes((await properties(true, undefined, 'SystemState')).SystemState)) fail();
   return { bootId, uid: uid(), namespaces, manager: { ...identity(manager), invocationId: service.InvocationID } };
 }
 const scopeProperties = unit => properties(true, unit, 'Id,LoadState,ActiveState,Transient,InvocationID,ControlGroup');

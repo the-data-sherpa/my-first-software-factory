@@ -15,13 +15,13 @@ import { controlledRuntime, controlledTransport, eventsResponse } from './model-
 import { executorToolResponse } from '../fixtures/executor-model.mjs';
 import { until } from '../phase-0/helpers.mjs';
 
-const [root, scenario] = process.argv.slice(2);
+const [root, scenario, stateDirectory] = process.argv.slice(2);
 const cli = scenario.startsWith('cli-');
 const kind = scenario.replace(/^cli-/, '');
 const executable = fileURLToPath(new URL('../../bin/factory.mjs', import.meta.url));
 const exec = promisify(execFile);
 globalThis.fetch = async () => { throw new Error('Uncontrolled network forbidden'); };
-const fixture = await dependencyFixture(root, { copyToolchain: true, checkSuffix: `
+const fixture = await dependencyFixture(root, { stateDir: stateDirectory, copyToolchain: true, checkSuffix: `
 if (process.argv.includes('run')) {
   try { await readFile('/work/helper.test.mjs'); await import('/work/helper.test.mjs');
     if (${JSON.stringify(kind === 'check-output-limit')}) await new Promise(resolve => process.stdout.write('x'.repeat(1048577), resolve));

@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, chmod, readdir, rm } from 'node:fs/promises';
@@ -13,7 +15,7 @@ async function removeFixture(root) {
   await writable(root); await rm(root, { recursive: true, force: true });
 }
 async function startup(t, stage) {
-  const root = await mkdtemp('/tmp/factory-dependencies-');
+  const root = await mkdtemp(join(tmpdir(), 'factory-dependencies-'));
   const harness = await startForeground(t, ['dependencies-diagnose', `startup-${stage}`, root]);
   t.after(async () => {
     await harness.dispose();
@@ -67,7 +69,7 @@ for (const stage of ['proof', 'target']) {
 }
 for (const stage of ['proof', 'target']) for (const trigger of ['timeout', 'output']) {
   test(`${stage}: injected ${trigger} at startup preserves the limit reason and drains before release`, async (t) => {
-    const root = await mkdtemp('/tmp/factory-dependencies-');
+    const root = await mkdtemp(join(tmpdir(), 'factory-dependencies-'));
     t.after(() => removeFixture(root));
     const worker = fileURLToPath(new URL('../fixtures/dependency-limit-fault.mjs', import.meta.url));
     const terminal = await runOwnedScope(t, [worker, root, stage, trigger], { timeout: 10000 });
@@ -77,7 +79,7 @@ for (const stage of ['proof', 'target']) for (const trigger of ['timeout', 'outp
   });
 }
 test('owner preparation startup cancellation sweeps both sandbox stages before and after the info handoff', async (t) => {
-  const root = await mkdtemp('/tmp/factory-dependencies-');
+  const root = await mkdtemp(join(tmpdir(), 'factory-dependencies-'));
   t.after(() => removeFixture(root));
   const worker = fileURLToPath(new URL('../fixtures/dependency-timing-loop.mjs', import.meta.url));
   const terminal = await runOwnedScope(t, [worker, root], { timeout: 30000 });
@@ -88,7 +90,7 @@ test('owner preparation startup cancellation sweeps both sandbox stages before a
 });
 for (const owner of ['standalone', 'application', 'application-persistence']) {
   test(`${owner}: failed namespace and scope drainage retains live ownership and the DRAIN_FAILED fence`, async (t) => {
-    const root = await mkdtemp('/tmp/factory-dependencies-');
+    const root = await mkdtemp(join(tmpdir(), 'factory-dependencies-'));
     t.after(() => removeFixture(root));
     const worker = fileURLToPath(new URL('../fixtures/dependency-drain-fault.mjs', import.meta.url));
     const terminal = await runOwnedScope(t, [worker, root, owner], { timeout: 10000 });

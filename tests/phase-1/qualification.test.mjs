@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, chmod, readdir, rm, writeFile, readFile } from 'node:fs/promises';
@@ -18,7 +20,7 @@ for (const scenario of ['green', 'candidate-tautology', 'candidate-unrelated', '
   'stop-capture', 'stop-during-capture', 'forged-state', 'runner-pool-threads', 'final-pool-threads',
   'late-source', 'tool-limit', 'stop', 'deadline', 'report-failure', 'drain-report', 'crash-inspect']) {
   test(`independent draft qualification through trusted execution: ${scenario}`, async t => {
-    const root = await mkdtemp('/tmp/factory-dependencies-');
+    const root = await mkdtemp(join(tmpdir(), 'factory-dependencies-'));
     let drained = false;
     try {
       const result = await runOwnedScope(t, [fileURLToPath(new URL(scenario === 'drain-report' ? './qualification-drain-worker.mjs' : './qualification-worker.mjs', import.meta.url)), root, scenario]);

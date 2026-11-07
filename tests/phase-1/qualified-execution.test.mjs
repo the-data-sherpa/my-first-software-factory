@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, chmod, readdir, rm, writeFile } from 'node:fs/promises';
@@ -38,7 +40,7 @@ test('composed execution construction and recovery stay passive and refuse injec
 
 for (const scenario of ['qualified', 'tautology', 'no-change', 'refusal', 'tool-limit', 'stop-before-qualification', 'stop-qualification', 'drain-report']) {
   test(`actual executor draft through composed qualification: ${scenario}`, async t => {
-    const root = await mkdtemp('/tmp/factory-dependencies-');
+    const root = await mkdtemp(join(tmpdir(), 'factory-dependencies-'));
     let drained = false;
     try {
       const worker = scenario === 'drain-report' ? './qualified-execution-drain-worker.mjs' : './qualified-execution-worker.mjs';

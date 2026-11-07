@@ -80,8 +80,8 @@ export async function commitHelper(fixture, helperSource, message) {
   fixture.git('add', '-A', helperPath); fixture.git('commit', '-m', message);
 }
 /** A committed controlled project whose admitted helper is `helperSource`. */
-export async function helperProject(root, helperSource) {
-  const fixture = await qualificationProject(root, 'green');
+export async function helperProject(root, helperSource, options) {
+  const fixture = await qualificationProject(root, 'green', options);
   await commitHelper(fixture, helperSource, 'controlled authored helper shape');
   return fixture;
 }

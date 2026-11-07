@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runOwnedScope } from '../fixtures/containment-harness.mjs';
@@ -25,7 +27,7 @@ function retainedTest(name, options, body) {
   });
 }
 async function scoped(t, scenario = 'prepare') {
-  const root = await mkdtemp('/tmp/factory-dependencies-');
+  const root = await mkdtemp(join(tmpdir(), 'factory-dependencies-'));
   const owned = { path: root, drained: false }; fixtureRoots.get(t).push(owned);
   const worker = fileURLToPath(new URL(scenario.startsWith('registry-')
     ? './dependency-registry-application-worker.mjs' : './dependency-application-worker.mjs', import.meta.url));

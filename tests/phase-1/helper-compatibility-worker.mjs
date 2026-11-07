@@ -15,7 +15,7 @@ import { scope, helperPath, testPath } from '../fixtures/qualified-execution-mod
 import { controlledRuntime, controlledTransport } from './model-fixtures.mjs';
 import { until } from '../phase-0/helpers.mjs';
 
-const [root, scenario, list, legacy] = process.argv.slice(2);
+const [root, scenario, list, legacy, stateDirectory] = process.argv.slice(2);
 globalThis.fetch = async () => { throw new Error('Uncontrolled network forbidden'); };
 const workspace = { admit: admitWorkspace, prepare: prepareWorkspace };
 const brief = 'Goal: normalizeAddress whitespace.\nAcceptance criteria: Preserve units, abbreviations, and the nullable contract with a regression test, no backfill.\nEvidence: Independently specified address examples.';
@@ -94,7 +94,7 @@ async function zeroEffect(result, label, { status = 'blocked', reason, admission
 }
 
 async function nullableFixture(base = nullableBase) {
-  const fixture = await helperProject(root, base);
+  const fixture = await helperProject(root, base, { stateDir: stateDirectory });
   const stateDir = fixture.workspaceIntent.stateDir;
   const project = { id: 'vanguard', repositoryPath: fixture.repositoryPath };
   return { fixture, stateDir, project, dependencyRunId: await prepared(stateDir, project, 'prepare') };
@@ -175,7 +175,7 @@ if (['nullable-qualified', 'nullable-qualified-at-write-limit', 'nullable-candid
   await zeroEffect(result, scenario, expected);
 } else if (scenario === 'unsupported-base') {
   const names = list.split(',');
-  const fixture = await helperProject(root, nullableBase);
+  const fixture = await helperProject(root, nullableBase, { stateDir: stateDirectory });
   const stateDir = fixture.workspaceIntent.stateDir;
   const project = { id: 'vanguard', repositoryPath: fixture.repositoryPath };
   let dependencyRunId;
