@@ -11,7 +11,12 @@ export function terminalUsage() {
   return event => {
     if (event?.type === 'message_start') value = event.message?.usage ? { ...event.message.usage } : undefined;
     if (event?.type !== 'message_delta' || !value) return;
-    value = { ...value, ...event.usage };
+    for (const [key, field] of Object.entries(event.usage ?? {})) {
+      if (field == null) continue;
+      value[key] = ['cache_creation', 'output_tokens_details'].includes(key)
+        ? { ...value[key], ...Object.fromEntries(Object.entries(field).filter(([, count]) => count != null)) }
+        : field;
+    }
     if (!event.delta?.stop_reason || !count(event.usage?.output_tokens) || !count(value.input_tokens)) return;
     const cacheRead = value.cache_read_input_tokens ?? 0;
     const cacheWrite = value.cache_creation_input_tokens ?? 0;

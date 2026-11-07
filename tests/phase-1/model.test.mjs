@@ -229,10 +229,10 @@ test('configuration cannot remove caps, elevate reasoning, enable background wor
   const modelsPath = join(directory, 'models.json');
   for (const [provider, reason] of [
     [{ compat: { forceAdaptiveThinking: false } }, 'MODEL_AUTH_INCOMPATIBLE'],
-    [{ modelOverrides: { 'claude-sonnet-5-5': { samplingParams: { max_tokens: 32768 } } } }, 'MODEL_AUTH_INCOMPATIBLE'],
-    [{ modelOverrides: { 'claude-sonnet-5-5': { samplingParams: { output_config: { effort: 'high' } } } } }, 'MODEL_PAYLOAD_REJECTED'],
-    [{ modelOverrides: { 'claude-sonnet-5-5': { samplingParams: { background: true } } } }, 'MODEL_PAYLOAD_REJECTED'],
-    [{ modelOverrides: { 'claude-sonnet-5-5': { samplingParams: { model: 'a-fallback' } } } }, 'MODEL_PAYLOAD_REJECTED'],
+    [{ modelOverrides: { 'claude-sonnet-5-5': { samplingParams: { max_tokens: 32768 } } } }, undefined],
+    [{ modelOverrides: { 'claude-sonnet-5-5': { samplingParams: { output_config: { effort: 'high' } } } } }, undefined],
+    [{ modelOverrides: { 'claude-sonnet-5-5': { samplingParams: { background: true } } } }, undefined],
+    [{ modelOverrides: { 'claude-sonnet-5-5': { samplingParams: { model: 'a-fallback' } } } }, undefined],
     [{ baseUrl: 'https://not-the-selected-route.invalid/v1' }, 'MODEL_UNAVAILABLE'],
   ]) {
     await writeFile(modelsPath, JSON.stringify({ providers: { anthropic: provider } }), { mode: 0o600 });
@@ -240,20 +240,19 @@ test('configuration cannot remove caps, elevate reasoning, enable background wor
     const transport = controlledTransport();
     const requests = createModelRequests({ modelRuntime: await controlledRuntime(undefined, { modelsPath }), budget: retained.budget, fetch: transport.fetch });
     const result = await requests.preflight();
+    assert.equal(result.ok, reason === undefined);
+    assert.equal(result.reason, reason);
     if (result.ok) {
-      // Unsupported sampling overrides may be ignored by this provider; the actual
-      // consumed packet must still preserve the fixed route, effort and cap.
       assert.equal(transport.requests.length, 1);
       const { payload } = transport.requests[0];
       assert.equal(payload.model, 'claude-sonnet-5-5');
       assert.equal(payload.max_tokens, 1024);
       assert.equal(payload.output_config.effort, 'low');
+      assert.equal(payload.thinking.type, 'adaptive');
       assert.equal(payload.background, undefined);
     } else {
-      assert.ok(['MODEL_AUTH_INCOMPATIBLE', 'MODEL_PAYLOAD_REJECTED', 'MODEL_UNAVAILABLE'].includes(result.reason));
       assert.equal(transport.requests.length, 0);
     }
-    if (provider.baseUrl) assert.equal(result.reason, reason);
     await requests.close();
   }
 });
@@ -344,6 +343,45 @@ test('OAuth accounting keeps cache input separate and includes thinking once in 
   assert.equal(result.accounting.cost.status, 'estimated');
   assert.equal(result.accounting.cost.usd.toFixed(7), '0.0001615');
   await requests.close();
+});
+
+test('nullable OAuth delta counters preserve measured usage and pinned catalog estimates', async () => {
+  const usage = { input_tokens: 500, output_tokens: 10, cache_read_input_tokens: 4000, cache_creation_input_tokens: 7,
+    cache_creation: { ephemeral_1h_input_tokens: 3 }, output_tokens_details: { reasoning_tokens: 4 } };
+  const preserved = { input: 500, output: 200, cacheRead: 4000, cacheWrite: 7, cacheWrite1h: 3, reasoning: 4, totalTokens: 4707 };
+  for (const [deltaUsage, expected, usd] of [
+    [{ output_tokens: 200, input_tokens: 500, cache_read_input_tokens: null, cache_creation_input_tokens: null,
+      cache_creation: null, output_tokens_details: null }, preserved, '0.0034220'],
+    [{ output_tokens: 200, input_tokens: null, cache_read_input_tokens: null, cache_creation_input_tokens: null,
+      cache_creation: { ephemeral_1h_input_tokens: null }, output_tokens_details: { thinking_tokens: null } }, preserved, '0.0034220'],
+    [{ output_tokens: 200 }, preserved, '0.0034220'],
+    [{ output_tokens: 200, input_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0,
+      cache_creation: { ephemeral_1h_input_tokens: 0 }, output_tokens_details: { thinking_tokens: 0 } },
+    { input: 0, output: 200, cacheRead: 0, cacheWrite: 0, cacheWrite1h: 0, reasoning: 0, totalTokens: 200 }, '0.0020000'],
+    [{ output_tokens: null }, undefined, undefined],
+  ]) {
+    const retained = retainedBudget();
+    const transport = controlledTransport(() => eventsResponse({ usage, deltaUsage }));
+    const requests = createModelRequests({ modelRuntime: await controlledRuntime(), budget: retained.budget, fetch: transport.fetch });
+    try {
+      const smoke = await requests.preflight();
+      const normal = await requests.request({ generationId: 'nullable-usage', messages });
+      for (const [index, result] of [smoke, normal].entries()) {
+        assert.equal(result.ok, true);
+        assert.deepEqual(result.accounting.usage, expected);
+        assert.equal(result.accounting.unmeasuredOutputTokens, expected ? 0 : index === 0 ? 1024 : 8192);
+        assert.equal(result.accounting.cost.status, expected ? 'estimated' : 'unknown');
+        assert.equal(result.accounting.cost.usd?.toFixed(7), usd);
+        assert.deepEqual(retained.inspect().reservations[index].accounting, result.accounting);
+        if (expected) {
+          const { cost, ...measured } = result.message.usage;
+          assert.deepEqual(measured, expected);
+          assert.equal(cost.total.toFixed(7), usd);
+          assert.equal(cost.totalFromProvider, false);
+        }
+      }
+    } finally { await requests.close(); }
+  }
 });
 
 test('actual OAuth payload mutations are refused before transport', async () => {
