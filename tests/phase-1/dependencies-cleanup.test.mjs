@@ -3,8 +3,6 @@ import { tmpdir } from 'node:os';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, chmod, readdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { startForeground, ownedProcesses, runOwnedScope } from '../fixtures/containment-harness.mjs';
 import { fileURLToPath } from 'node:url';
 import { waitForCleanup } from '../../src/containment-process-fixtures.mjs';

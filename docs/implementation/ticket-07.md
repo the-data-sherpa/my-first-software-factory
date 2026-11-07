@@ -85,7 +85,7 @@ The adapter saves each stage before its effects:
 The boundary probe checks actual mounts, environment scrubbing, network denial, scratch, resources, and namespace drainage.
 It precedes credential-discovering initialization. It is a trusted probe, not agent tool access.
 Trusted baseline checks also do not expose file tools or a dispatcher.
-The model route remains `openai/gpt-6.1-sol`, with explicit low reasoning and the existing no-tool payload policy.
+The smoke uses the route and authentication requirements in [Selected-model preflight](../../README.md#selected-model-preflight), with the existing no-tool payload policy.
 
 The fixed commands remain:
 

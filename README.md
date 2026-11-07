@@ -531,7 +531,7 @@ The owner accepted the complete [Phase 1 design](docs/phase-1-plan.md) on 2026-1
 ## Candidate technology
 
 - **Agent foundation:** `@earendil-works/pi-durable` 1.5.0, matching the local `pi` 1.5.0 installation, accepted in ADR 0001.
-- **Models:** Fixed `anthropic/claude-sonnet-5-5` with low adaptive effort and Pi's existing OAuth integration, as recorded in [ADR 0006](docs/adr/0006-use-capped-anthropic-oauth-in-phase-1.md). No provider/model fallback or API keys. Live authentication and cap acceptance remain unverified; preflight failure blocks execution.
+- **Models:** See [Selected-model preflight](#selected-model-preflight) for the current route, authentication requirements, and live acceptance limits.
 - **Application:** Node.js ES modules, using the repository's `.mjs` style. Ticket #1 applies the selected Node 24.21.0 pin through `.mise.toml`, the package engine, and the CLI version check. Global runtime settings remain unchanged.
 - **Storage:** SQLite, with a factory-level record store and per-run durable execution stores as selected in ADR 0005. Ticket #1 records storage versions, enforces native read-only execution inspection, and verifies closed-store backup/restore.
 - **Interface:** Phase 1 CLI with a foreground backend; a web workspace in Phase 2.

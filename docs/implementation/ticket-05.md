@@ -3,6 +3,7 @@
 This slice adds bounded model requests from baseline `49a57c9`.
 It uses the installed, pinned Pi 1.5.0 packages and Node 24.21.0.
 Controlled transports provide the evidence. No live model acceptance or Vanguard execution occurred.
+The route, authentication, payload, and usage handling later changed in the [OAuth compatibility work](oauth-compatibility.md); the verification totals below describe this ticket's historical source.
 
 ## Factory-owned interfaces
 
@@ -14,7 +15,7 @@ createModelRequests({ modelRuntime, budget, signal, fetch, clock })
 ```
 
 The caller supplies Pi's `ModelRuntime`. These constructors do not create a runtime, discover credentials, or load host configuration.
-`ModelRuntime` owns credential resolution and the actual Responses adapter. There is no separate credential loader or fallback route.
+`ModelRuntime` owns credential resolution and the provider adapter. There is no separate credential loader or fallback route.
 `fetch` and `clock` are controlled transport/time boundaries for tests. Production uses the default fetch and system clock.
 The request clock must use the same time base as the factory budget.
 
@@ -25,7 +26,7 @@ The request clock must use the same time base as the factory budget.
 It exists to exercise normal requests and durable retries. It does not enable the repository executor.
 
 The adapter supplies `mode`, `model`, `start`, `resume`, and `assessRecovery`.
-Modes are `model-preflight` and `model-bounded-no-tools`. The model is always `openai/gpt-6.1-sol`.
+Modes are `model-preflight` and `model-bounded-no-tools`. The selected model and authentication requirements are documented in [Selected-model preflight](../../README.md#selected-model-preflight).
 
 ```js
 const handle = await execution.start({
@@ -78,19 +79,14 @@ No automatic compaction, continuation hooks, follow-up inputs, deferred response
 
 ## Request enforcement
 
-- The exact physical model must use `openai-responses` at the official OpenAI v1 endpoint.
-- Auth checks must report `api_key`. OAuth fails before token refresh or model dispatch.
-- The final authorization header must contain an API key beginning with `sk-`.
-- A missing, invalid, or excessive `max_output_tokens` blocks dispatch. Server rejection of the cap also fails preflight.
+The current provider, authentication, and serialized payload checks are described in the [OAuth implementation](oauth-compatibility.md#implementation), replacing this ticket's original Responses/API-key contract.
+
 - The smoke requests at most 1,024 output tokens and has a 60-second full-stream deadline.
 - Normal requests request at most 8,192 output tokens and have a 180-second full-stream deadline.
 - Both deadlines end no later than the original run deadline.
-- The payload must use explicit `low` reasoning, streaming, and `store: false`.
 - Provider retries are zero. A second transport dispatch under one reservation is also refused.
 - Redirects are disabled. The final URL and serialized payload receive another check before transport I/O.
 
-The installed SDK's optional mid-conversation effort mode otherwise sends `medium` in the top-level request.
-The bounded model copy disables that mode. Controlled payload checks confirm top-level `reasoning.effort: low`.
 The adapter does not depend on the SDK's response-header timeout for its deadline.
 Its own abort timer covers auth preparation, headers, and the complete response body.
 Body cancellation joins the underlying reader's cleanup before returning. Unconfirmed cleanup does not become a terminal success.
@@ -126,7 +122,7 @@ Final settlement records bounded evidence. It never refunds attempts or `counter
 Older reservations without accounting remain conservative full reservations, not measured consumption.
 
 Reasoning tokens are a subset of output tokens. Neither totals nor estimated cost add reasoning a second time.
-Failed Responses events retain their usage even when Pi's normalized error message omits it.
+The [OAuth accounting description](oauth-compatibility.md#implementation) defines which provider events supply measured usage.
 Catalog pricing supplies estimates, not provider-reported invoices. Service-tier adjustments and actual billing remain unverified.
 There is no hard monetary ceiling. Local abort does not prove that provider billing stopped.
 
@@ -162,7 +158,7 @@ The standalone preflight adapter already owns a durable submission. It is not a 
 Ticket #8 must retain the same request gates when adding contained tools and multiple generations.
 Every future generation needs a stable identity, and every tool round must use the existing tool budget.
 
-Live API-key availability, provider cap enforcement, actual billing, and the Vanguard maintenance demonstration remain owner-invoked acceptance gates.
+The current live model acceptance gates are documented in [Selected-model preflight](../../README.md#selected-model-preflight); the Vanguard maintenance demonstration remains separate.
 Repository tools, dependency preparation, baseline qualification, readiness qualification, and production effect reconciliation remain separate slices.
 
 ## Verification

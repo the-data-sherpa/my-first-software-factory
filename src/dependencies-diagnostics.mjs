@@ -31,9 +31,9 @@ function tarball(files) {
   }
   blocks.push(Buffer.alloc(1024)); return gzipSync(Buffer.concat(blocks));
 }
-export async function dependencyFixture(root, { copyToolchain = false, frozenMismatch = false, checkSuffix = '' } = {}) {
+export async function dependencyFixture(root, { copyToolchain = false, frozenMismatch = false, checkSuffix = '', stateDir = `${root}/private` } = {}) {
   if (!/^factory-dependencies-[A-Za-z0-9]+$/.test(basename(root)) || root !== join(tmpdir(), basename(root))) throw new Error('Disposable fixture required');
-  const repositoryPath = `${root}/owner`; const stateDir = `${root}/private`; const logs = `${root}/fixture-log`;
+  const repositoryPath = `${root}/owner`; const logs = `${root}/fixture-log`;
   for (const path of [repositoryPath, stateDir, logs, `${repositoryPath}/vendor`]) await mkdir(path, { mode: 0o700 });
   const manifest = { name: 'root-fixture', version: '1.0.0', scripts: scripts('root'), trustedDependencies: ['vitest'],
     devDependencies: { vitest: 'file:vendor/vitest.tgz', eslint: 'file:vendor/eslint.tgz' } };
